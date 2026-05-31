@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Portfolio Now Brief</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">B</span>
+        <div>
+          <strong>Briefolio</strong>
+          <span>Portfolio Now</span>
+        </div>
+      </div>
+      <nav>
+        <a href="#dashboard" class="active">대시보드</a>
+        <a href="#manage">주식 설정</a>
+        <a href="#plans">주식 모으기</a>
+        <a href="#settings">알림 설정</a>
+      </nav>
+    </aside>
+
+    <main>
+      <section id="dashboard" class="hero">
+        <div>
+          <p class="eyebrow">Portfolio Now Brief</p>
+          <h1>오늘 내 주식 상태를 바로 확인하세요</h1>
+          <p class="hero-copy">가격, 뉴스, 매수 계획, 오늘 해야 할 일을 한 번에 정리합니다.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="openBriefBtn" class="primary">브리핑 보기</button>
+          <button id="refreshBtn">새로고침</button>
+        </div>
+      </section>
+
+      <section class="metrics">
+        <div>
+          <span>원화 평가액</span>
+          <strong id="totalKrw">-</strong>
+        </div>
+        <div>
+          <span>달러 평가액</span>
+          <strong id="totalUsd">-</strong>
+        </div>
+        <div>
+          <span>켜진 모으기</span>
+          <strong id="activePlans">-</strong>
+        </div>
+        <div>
+          <span>마지막 업데이트</span>
+          <strong id="updatedAt">-</strong>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">가격 요약</p>
+            <h2>보유 종목</h2>
+          </div>
+          <button id="sendBtn">테스트 메일</button>
+        </div>
+        <div id="holdingCards" class="holding-grid"></div>
+      </section>
+
+      <section id="manage" class="workbench">
+        <div class="panel">
+          <p class="eyebrow">주식 설정</p>
+          <h2>종목 추가</h2>
+          <form id="holdingForm" class="form-grid">
+            <label>종목명<input name="name" placeholder="예: Apple"></label>
+            <label>티커<input name="symbol" placeholder="예: AAPL"></label>
+            <label>시장<select name="market"><option value="US">미국</option><option value="KR">한국</option></select></label>
+            <label>현재 수량<input name="quantity" type="number" step="0.000001" value="0"></label>
+            <label>평균 단가<input name="average_price" type="number" step="0.01" value="0"></label>
+            <button class="primary" type="submit">종목 추가</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <p class="eyebrow">매수 기록</p>
+          <h2>샀거나 판 내역 반영</h2>
+          <form id="tradeForm" class="form-grid">
+            <label>종목<select name="holding_id" id="tradeHolding"></select></label>
+            <label>구분<select name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
+            <label>수량<input name="quantity" type="number" step="0.000001" placeholder="소수점 가능"></label>
+            <label>가격<input name="price" type="number" step="0.01" placeholder="1주 가격"></label>
+            <label>날짜<input name="date" type="date"></label>
+            <label>메모<input name="memo" placeholder="예: 첫 매수"></label>
+            <button class="primary" type="submit">반영하기</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="plans" class="panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">주식 모으기</p>
+            <h2>정기 매수 계획</h2>
+          </div>
+          <p class="muted">예: 삼성전자 매주 월요일 10,000원</p>
+        </div>
+        <div id="planList" class="plan-list"></div>
+      </section>
+
+      <section class="news-grid">
+        <div class="panel">
+          <p class="eyebrow">오늘의 주요 뉴스들</p>
+          <h2>국내 뉴스</h2>
+          <div id="domesticNews" class="news-list"></div>
+        </div>
+        <div class="panel">
+          <p class="eyebrow">번역 요약</p>
+          <h2>해외 뉴스</h2>
+          <div id="overseasNews" class="news-list"></div>
+        </div>
+      </section>
+
+      <section id="settings" class="panel">
+        <p class="eyebrow">알림 설정</p>
+        <h2>아침 브리핑 메일</h2>
+        <form id="settingsForm" class="settings-grid">
+          <label>받을 이메일<input name="recipient" type="email" placeholder="name@example.com"></label>
+          <label>발송 시간<input name="send_time" type="time" value="07:00"></label>
+          <label>시간대<input name="timezone" value="Asia/Seoul"></label>
+          <button class="primary" type="submit">설정 저장</button>
+        </form>
+      </section>
+    </main>
+
+    <section id="briefDrawer" class="drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-close-brief></div>
+      <article class="brief-card">
+        <div class="brief-top">
+          <div>
+            <p class="eyebrow">Now Brief</p>
+            <h2>오늘의 포트폴리오</h2>
+          </div>
+          <button data-close-brief>닫기</button>
+        </div>
+        <div id="briefHighlights" class="brief-highlights"></div>
+        <pre id="briefingText">불러오는 중...</pre>
+        <div class="brief-actions">
+          <button id="copyBtn">브리핑 복사</button>
+          <button id="sendBriefBtn" class="primary">메일로 보내기</button>
+        </div>
+      </article>
+    </section>
+
+    <div id="toast" role="status"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
