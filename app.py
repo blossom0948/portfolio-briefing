@@ -12,6 +12,16 @@ import portfolio_core as core
 app = Flask(__name__)
 
 
+@app.before_request
+def require_pin():
+    app_pin = core.os.environ.get("APP_PIN")
+    if not app_pin or not request.path.startswith("/api/"):
+        return None
+    if request.headers.get("X-App-Pin") == app_pin:
+        return None
+    return jsonify({"error": "PIN required"}), 401
+
+
 def scheduled_send() -> None:
     try:
         core.send_briefing_email()

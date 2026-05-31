@@ -1,3 +1,10 @@
+---
+title: Briefolio
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Portfolio Briefing App
 
 삼성전자, QQQM, VOO 같은 보유 종목을 관리하고 매일 아침 브리핑 메일을 보내는 Flask 앱입니다.
@@ -19,6 +26,7 @@ GMAIL_USER=blossom0948@gmail.com
 GMAIL_APP_PASSWORD=앱비밀번호
 BRIEFING_RECIPIENT=blossom0948@gmail.com
 ENABLE_APP_SCHEDULER=false
+APP_PIN=원하는접속핀
 ```
 
 `.env`는 `.gitignore`에 포함되어 있어 저장소에 올라가지 않습니다.

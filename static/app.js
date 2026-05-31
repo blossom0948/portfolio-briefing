@@ -30,7 +30,20 @@ function toast(message) {
 }
 
 async function requestJson(url, options) {
-  const response = await fetch(url, options);
+  const requestOptions = options ? { ...options } : {};
+  requestOptions.headers = {
+    ...(requestOptions.headers || {}),
+    ...(localStorage.getItem("briefolioPin") ? { "X-App-Pin": localStorage.getItem("briefolioPin") } : {}),
+  };
+  let response = await fetch(url, requestOptions);
+  if (response.status === 401) {
+    const pin = window.prompt("Briefolio PIN을 입력하세요.");
+    if (pin) {
+      localStorage.setItem("briefolioPin", pin);
+      requestOptions.headers["X-App-Pin"] = pin;
+      response = await fetch(url, requestOptions);
+    }
+  }
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || response.statusText);
