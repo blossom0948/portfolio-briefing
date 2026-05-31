@@ -19,7 +19,7 @@
         <button class="nav-item active" data-view="dashboard">대시보드</button>
         <button class="nav-item" data-view="manage">주식 설정</button>
         <button class="nav-item" data-view="briefing">브리핑 · AI</button>
-        <button class="nav-item" data-view="settings">연결 설정</button>
+        <button class="nav-item" data-view="settings">알림 설정</button>
       </nav>
     </aside>
 
@@ -28,18 +28,18 @@
         <div>
           <p class="eyebrow">Portfolio Now Brief</p>
           <h1>폰에서도 같은 대시보드로 관리하세요</h1>
-          <p>Cloudflare Pages에서 열리고, 설정은 Apps Script에 저장됩니다.</p>
+          <p>설정은 Cloudflare Functions를 거쳐 Apps Script에 저장되고, 매일 아침 메일에 반영됩니다.</p>
         </div>
         <div class="hero-actions">
-          <button id="loadBtn">불러오기</button>
+          <button id="loadBtn">새로고침</button>
           <button id="saveBtn" class="primary">저장</button>
         </div>
       </section>
 
       <section id="view-dashboard" class="view active">
         <div class="metrics">
-          <div><span>원화 평가액</span><strong id="totalKrw">설정 기반</strong></div>
-          <div><span>달러 평가액</span><strong id="totalUsd">설정 기반</strong></div>
+          <div><span>원화 평가액</span><strong id="totalKrw">-</strong></div>
+          <div><span>달러 평가액</span><strong id="totalUsd">-</strong></div>
           <div><span>켜진 모으기</span><strong id="activePlans">-</strong></div>
           <div><span>상태</span><strong id="syncState">대기</strong></div>
         </div>
@@ -47,8 +47,8 @@
           <section class="panel span-2">
             <div class="section-head">
               <div>
-                <p class="eyebrow">보유 설정</p>
-                <h2>종목과 주식 모으기</h2>
+                <p class="eyebrow">가격 요약</p>
+                <h2>보유 종목</h2>
               </div>
             </div>
             <div id="holdingCards" class="holding-grid"></div>
@@ -56,7 +56,7 @@
           <section class="panel">
             <p class="eyebrow">최근 브리핑</p>
             <h2>메일 발송 내용</h2>
-            <pre id="briefingText" class="small-pre">Apps Script URL을 연결하고 불러오기를 누르세요.</pre>
+            <pre id="briefingText" class="small-pre">불러오는 중...</pre>
           </section>
         </div>
       </section>
@@ -66,7 +66,7 @@
           <div class="section-head">
             <div>
               <p class="eyebrow">주식 설정</p>
-              <h2>보유 종목</h2>
+              <h2>종목과 주식 모으기</h2>
             </div>
             <button id="addHoldingBtn">종목 추가</button>
           </div>
@@ -79,25 +79,34 @@
           <section class="panel">
             <p class="eyebrow">Now Brief</p>
             <h2>최근 브리핑</h2>
-            <pre id="briefingText2">불러오기 전입니다.</pre>
+            <pre id="briefingText2">불러오는 중...</pre>
           </section>
           <section class="panel">
-            <p class="eyebrow">AI 질문</p>
-            <h2>Cloudflare 버전 안내</h2>
-            <p class="muted">진짜 AI 대화는 API 키를 안전하게 숨길 서버가 필요합니다. 현재 무료 구조에서는 로컬 Flask 앱 또는 Apps Script 앱에서 AI를 쓰는 구성이 안전합니다.</p>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">AI 질문</p>
+                <h2>내 포트폴리오에 대해 물어보기</h2>
+              </div>
+              <button id="exampleQuestionBtn">예시</button>
+            </div>
+            <textarea id="aiQuestion" placeholder="예: 삼성전자를 매주 1만원씩 1년 모으면 얼마를 쓰고 어떤 시나리오가 가능해?"></textarea>
+            <button id="askAiBtn" class="primary wide">AI 답변 받기</button>
+            <pre id="aiAnswer" class="answer">AI 키가 없거나 quota가 막히면 내장 계산 모드로 답합니다.</pre>
           </section>
         </div>
       </section>
 
       <section id="view-settings" class="view">
         <section class="panel">
-          <p class="eyebrow">연결 설정</p>
-          <h2>Apps Script 저장소 연결</h2>
+          <p class="eyebrow">알림 설정</p>
+          <h2>아침 브리핑</h2>
           <div class="settings-grid">
-            <label>Apps Script URL<input id="endpoint" placeholder="https://script.google.com/macros/s/.../exec"></label>
-            <button id="saveEndpointBtn" class="primary">URL 저장</button>
+            <label>받을 이메일<input id="recipient" type="email"></label>
+            <label>발송 시간<input id="sendTime" type="time"></label>
+            <label>시간대<input id="timezone"></label>
+            <button id="saveSettingsBtn" class="primary">설정 저장</button>
           </div>
-          <p class="sync-note">GitHub Actions Secret의 `PORTFOLIO_CONFIG_URL`에도 같은 URL이 들어가야 매일 메일에 반영됩니다.</p>
+          <p class="sync-note">Cloudflare 환경 변수 `PORTFOLIO_CONFIG_URL`이 설정되어 있으면 이 화면의 저장값이 매일 메일에 반영됩니다.</p>
         </section>
       </section>
     </main>

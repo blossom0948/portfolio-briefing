@@ -4,14 +4,16 @@ Cloudflare Pages는 GitHub 저장소와 직접 연동할 수 있습니다. 이 �
 
 ## 중요한 차이
 
-Cloudflare Pages는 Flask 서버를 그대로 실행하지 않습니다. 그래서 `http://127.0.0.1:5050`의 Python 백엔드를 그대로 올리는 것이 아니라, 같은 디자인의 정적 대시보드를 `docs/`에 둡니다.
+Cloudflare Pages는 Flask 서버를 그대로 실행하지 않습니다. 그래서 `http://127.0.0.1:5050`의 Python 백엔드를 그대로 올리는 것이 아니라, 같은 디자인의 정적 대시보드를 `docs/`에 두고, Cloudflare Pages Functions가 `/api/*` 백엔드를 맡습니다.
 
 저장과 알림 반영은 이렇게 됩니다.
 
 1. Cloudflare Pages 대시보드에서 설정 입력
-2. Apps Script URL로 설정 저장
-3. GitHub Actions가 매일 오전 7시에 Apps Script 설정을 읽음
-4. Gmail 브리핑 발송
+2. `/api/config` Pages Function이 Apps Script URL로 설정 저장
+3. `/api/snapshot` Pages Function이 Yahoo Finance chart API로 가격 요약 조회
+4. `/api/ai` Pages Function이 OpenAI 또는 Gemini를 호출
+5. GitHub Actions가 매일 오전 7시에 Apps Script 설정을 읽음
+6. Gmail 브리핑 발송
 
 Cloudflare Containers는 Flask Docker를 그대로 실행할 수 있지만 Workers Paid plan 대상입니다. 무료로 가려면 Pages + Apps Script + GitHub Actions 조합이 낫습니다.
 
@@ -43,19 +45,28 @@ https://portfolio-briefing.pages.dev
 
 ## 사용 방법
 
+배포 전에 Cloudflare Pages 프로젝트의 `Settings` -> `Environment variables`에 아래 값을 넣습니다.
+
+```text
+PORTFOLIO_CONFIG_URL=Apps Script /exec 주소
+OPENAI_API_KEY=OpenAI API 키, 선택
+OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=Gemini API 키, 선택
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+`PORTFOLIO_CONFIG_URL`은 필수입니다. `?app=1` 없는 `/exec` 주소를 넣습니다.
+
+사용 순서:
+
 1. Cloudflare Pages 주소로 접속합니다.
-2. `연결 설정` 탭에 Apps Script `/exec` URL을 넣습니다.
-3. `URL 저장`을 누릅니다.
-4. `불러오기`를 누릅니다.
-5. 주식 설정을 바꾸고 `저장`을 누릅니다.
-6. 다시 `불러오기`를 눌러 저장값이 보이면 완료입니다.
+2. 대시보드가 자동으로 설정과 가격을 불러옵니다.
+3. `주식 설정` 탭에서 보유 수량, 평단, 주식 모으기를 수정합니다.
+4. `저장`을 누릅니다.
+5. 다시 새로고침했을 때 값이 유지되면 완료입니다.
 
 ## AI
 
-정적 Cloudflare Pages에 OpenAI/Gemini API 키를 직접 넣으면 키가 노출됩니다. 그래서 AI 대화형 기능은 아래 중 하나로 가야 합니다.
+AI 키는 프론트엔드에 넣지 않고 Cloudflare Environment variables에 넣습니다. `/api/ai` Pages Function이 대신 호출하므로 키가 브라우저에 노출되지 않습니다.
 
-- 로컬 Flask 대시보드에서 사용
-- Apps Script 앱에서 사용
-- Cloudflare Worker를 별도로 만들어 API 키를 Worker Secret에 저장하고 호출
-
-지금 무료 MVP에서는 AI를 로컬 Flask나 Apps Script 쪽에 두는 것이 안전합니다.
+OpenAI/Gemini quota가 막히면 앱은 1년 적립 시뮬레이션 같은 계산형 질문에 대해 내장 계산 모드로 답합니다.
