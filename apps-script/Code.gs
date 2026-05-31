@@ -1,4 +1,5 @@
 const PROPERTY_KEY = "PORTFOLIO_JSON";
+const LAST_BRIEFING_KEY = "LAST_BRIEFING_JSON";
 
 function defaultPortfolio() {
   return {
@@ -82,7 +83,15 @@ function doGet(e) {
 
 function doPost(e) {
   const body = e && e.postData && e.postData.contents ? e.postData.contents : "{}";
-  const portfolio = JSON.parse(body);
+  const payload = JSON.parse(body);
+  if (payload.action === "saveLastBriefing") {
+    PropertiesService.getScriptProperties().setProperty(LAST_BRIEFING_KEY, JSON.stringify({
+      text: payload.text || "",
+      updatedAt: payload.updatedAt || new Date().toISOString()
+    }));
+    return jsonOutput({ ok: true });
+  }
+  const portfolio = payload;
   PropertiesService.getScriptProperties().setProperty(PROPERTY_KEY, JSON.stringify(portfolio));
   return jsonOutput({ ok: true, savedAt: new Date().toISOString() });
 }
@@ -95,4 +104,62 @@ function getPortfolio() {
 function savePortfolio(portfolio) {
   PropertiesService.getScriptProperties().setProperty(PROPERTY_KEY, JSON.stringify(portfolio));
   return { ok: true, savedAt: new Date().toISOString() };
+}
+
+function getLastBriefing() {
+  const stored = PropertiesService.getScriptProperties().getProperty(LAST_BRIEFING_KEY);
+  return stored ? JSON.parse(stored) : { text: "아직 저장된 브리핑이 없습니다. GitHub Actions를 한 번 실행하면 여기에 표시됩니다.", updatedAt: "" };
+}
+
+function askAi(question) {
+  const props = PropertiesService.getScriptProperties();
+  const apiKey = props.getProperty("GEMINI_API_KEY");
+  const model = props.getProperty("GEMINI_MODEL") || "gemini-2.0-flash";
+  if (!apiKey) {
+    return "GEMINI_API_KEY가 아직 설정되지 않았습니다. Apps Script의 프로젝트 설정 > 스크립트 속성에 GEMINI_API_KEY를 추가하세요.";
+  }
+
+  const portfolio = getPortfolio();
+  const lastBriefing = getLastBriefing();
+  const prompt = [
+    "너는 개인 포트폴리오 브리핑 도우미다.",
+    "답변은 한국어로, 초보 투자자가 이해하기 쉽게, 숫자는 가정을 분명히 밝히고 계산해라.",
+    "투자 조언을 단정하지 말고, 시나리오와 체크포인트 중심으로 답해라.",
+    "",
+    "현재 포트폴리오 JSON:",
+    JSON.stringify(portfolio),
+    "",
+    "최근 브리핑:",
+    lastBriefing.text || "",
+    "",
+    "사용자 질문:",
+    question
+  ].join("\n");
+
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey);
+  const response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 1200
+      }
+    })
+  });
+  const code = response.getResponseCode();
+  const data = JSON.parse(response.getContentText());
+  if (code >= 400) {
+    return "AI 호출 실패: " + (data.error && data.error.message ? data.error.message : response.getContentText());
+  }
+  return data.candidates && data.candidates[0] && data.candidates[0].content
+    ? data.candidates[0].content.parts.map(part => part.text || "").join("")
+    : "AI 응답을 읽지 못했습니다.";
 }

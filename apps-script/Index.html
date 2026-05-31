@@ -49,6 +49,22 @@
           <button id="saveBtn" class="primary">저장</button>
         </div>
       </section>
+
+      <section>
+        <h2>최근 브리핑</h2>
+        <p>매일 아침 메일로 발송된 브리핑이 여기에 같이 저장됩니다.</p>
+        <pre id="briefing" style="white-space:pre-wrap;background:#111827;color:#f8fafc;border-radius:8px;padding:14px;line-height:1.5;overflow:auto"></pre>
+      </section>
+
+      <section>
+        <h2>AI에게 물어보기</h2>
+        <p>예: “삼성전자를 매주 1만원씩 1년 모으면 얼마를 쓰고 어떤 시나리오가 가능해?”</p>
+        <label>질문<input id="question" placeholder="내 포트폴리오에 대해 물어보기"></label>
+        <div class="actions">
+          <button id="askBtn" class="primary">AI 답변 받기</button>
+        </div>
+        <pre id="answer" style="white-space:pre-wrap;background:#f8fafc;border:1px solid #d7dde6;border-radius:8px;padding:14px;line-height:1.5;overflow:auto"></pre>
+      </section>
     </main>
     <script>
       let portfolio = null;
@@ -115,10 +131,26 @@
           .withFailureHandler((err) => status("저장 실패: " + err.message))
           .savePortfolio(portfolio);
       };
+      $("askBtn").onclick = () => {
+        const question = $("question").value.trim();
+        if (!question) {
+          $("answer").textContent = "질문을 입력하세요.";
+          return;
+        }
+        $("answer").textContent = "AI가 계산하고 있습니다...";
+        google.script.run
+          .withSuccessHandler((text) => $("answer").textContent = text)
+          .withFailureHandler((err) => $("answer").textContent = "AI 답변 실패: " + err.message)
+          .askAi(question);
+      };
       google.script.run
         .withSuccessHandler((data) => { portfolio = data; render(); status("설정을 불러왔습니다."); })
         .withFailureHandler((err) => status("불러오기 실패: " + err.message))
         .getPortfolio();
+      google.script.run
+        .withSuccessHandler((data) => $("briefing").textContent = data.text || "")
+        .withFailureHandler((err) => $("briefing").textContent = "브리핑 불러오기 실패: " + err.message)
+        .getLastBriefing();
     </script>
   </body>
 </html>

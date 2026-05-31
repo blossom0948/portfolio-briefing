@@ -74,9 +74,26 @@ GitHub Pages 주소는 안내용/백업용으로 둬도 됩니다. 실제 핸드
 
 ## AI를 웹사이트에 넣는 방법
 
-가능은 하지만 API 키를 HTML에 직접 넣으면 안 됩니다. 안전한 방식은 아래 둘 중 하나입니다.
+가능은 하지만 API 키를 HTML에 직접 넣으면 안 됩니다. 안전한 방식은 Apps Script 서버 함수에서 AI를 호출하는 것입니다.
 
-1. GitHub Actions에서 AI 요약을 생성해서 메일에 넣기
-2. Cloudflare Worker나 Apps Script 같은 작은 백엔드가 AI API를 대신 호출하기
+이 프로젝트의 Apps Script 앱에는 `AI에게 물어보기` 섹션이 포함되어 있습니다.
 
-HTML만 있는 GitHub Pages에 OpenAI/Gemini 키를 직접 넣는 방식은 키가 노출되므로 피해야 합니다.
+1. [Google AI Studio](https://aistudio.google.com/)에서 Gemini API 키를 만듭니다.
+2. Apps Script 프로젝트 설정으로 갑니다.
+3. `스크립트 속성`에 아래 값을 추가합니다.
+
+```text
+GEMINI_API_KEY=발급받은 API 키
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+4. Apps Script를 새 버전으로 다시 배포합니다.
+5. 핸드폰 앱에서 `AI에게 물어보기`에 질문을 입력합니다.
+
+예시 질문:
+
+```text
+삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?
+```
+
+Gemini API의 표준 텍스트 생성은 `generateContent` REST 엔드포인트를 사용합니다. 이 프로젝트에서는 Apps Script의 `UrlFetchApp`이 그 엔드포인트를 호출합니다.

@@ -468,3 +468,17 @@ def send_briefing_email() -> None:
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
         server.login(os.environ["GMAIL_USER"], os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
         server.send_message(msg)
+    config_url = os.environ.get("PORTFOLIO_CONFIG_URL")
+    if config_url:
+        try:
+            requests.post(
+                config_url,
+                json={
+                    "action": "saveLastBriefing",
+                    "text": body,
+                    "updatedAt": datetime.now().isoformat(),
+                },
+                timeout=20,
+            )
+        except Exception:
+            pass
