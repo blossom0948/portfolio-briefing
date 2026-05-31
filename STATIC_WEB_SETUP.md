@@ -1,0 +1,73 @@
+# 무료 웹 배포 구조
+
+이 구조는 유료 서버 없이 웹 입력값을 매일 아침 메일에 반영합니다.
+
+## 구조
+
+- GitHub Pages: 설정 화면을 무료로 호스팅
+- Google Apps Script: 웹에서 입력한 포트폴리오 설정을 저장
+- GitHub Actions: 매일 오전 7시에 설정을 읽고 Gmail 발송
+
+GitHub Pages는 정적 사이트 호스팅이고, GitHub 공식 문서에서도 GitHub Free의 public repo에서 사용할 수 있습니다. Apps Script Web App은 HTTP POST가 들어오면 `doPost(e)`를 실행할 수 있습니다. Cloudflare Workers도 무료 플랜이 있지만, Python의 `pykrx/yfinance`를 그대로 쓰기 어려워 지금 프로젝트에는 GitHub Actions가 더 맞습니다.
+
+## 1. GitHub Pages 켜기
+
+1. GitHub 저장소 `Settings`로 갑니다.
+2. `Pages` 메뉴로 갑니다.
+3. `Build and deployment`에서 `Deploy from a branch`를 선택합니다.
+4. Branch는 `main`, 폴더는 `/docs`를 선택합니다.
+5. 저장합니다.
+
+잠시 후 이런 주소가 생깁니다.
+
+```text
+https://blossom0948.github.io/portfolio-briefing/
+```
+
+## 2. Google Apps Script 만들기
+
+1. [Apps Script](https://script.google.com/)에 들어갑니다.
+2. 새 프로젝트를 만듭니다.
+3. `apps-script/Code.gs` 파일 내용을 복사해서 붙여넣습니다.
+4. `배포` -> `새 배포`를 누릅니다.
+5. 유형은 `웹 앱`을 선택합니다.
+6. 실행 사용자는 `나`, 액세스 권한은 `모든 사용자`로 둡니다.
+7. 배포 후 나온 Web app URL을 복사합니다.
+
+## 3. GitHub Actions에 설정 URL 저장
+
+GitHub 저장소에서:
+
+`Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
+
+아래 secret을 추가합니다.
+
+```text
+PORTFOLIO_CONFIG_URL=Apps Script Web app URL
+```
+
+이미 넣은 Gmail secret 3개는 그대로 둡니다.
+
+## 4. 웹에서 설정 저장
+
+1. GitHub Pages 주소로 접속합니다.
+2. Apps Script URL을 입력합니다.
+3. 보유 수량, 평단, 주식 모으기 계획을 입력합니다.
+4. `웹 설정 저장`을 누릅니다.
+5. `불러오기`를 눌러 저장값이 다시 뜨면 성공입니다.
+
+## 5. 메일 테스트
+
+1. GitHub `Actions` 탭으로 갑니다.
+2. `Daily portfolio briefing`을 선택합니다.
+3. `Run workflow`를 누릅니다.
+4. 메일 내용이 웹에서 저장한 설정을 반영하면 성공입니다.
+
+## AI를 웹사이트에 넣는 방법
+
+가능은 하지만 API 키를 HTML에 직접 넣으면 안 됩니다. 안전한 방식은 아래 둘 중 하나입니다.
+
+1. GitHub Actions에서 AI 요약을 생성해서 메일에 넣기
+2. Cloudflare Worker나 Apps Script 같은 작은 백엔드가 AI API를 대신 호출하기
+
+HTML만 있는 GitHub Pages에 OpenAI/Gemini 키를 직접 넣는 방식은 키가 노출되므로 피해야 합니다.

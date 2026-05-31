@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Briefolio Settings</title>
+    <style>
+      body { margin: 0; background: #f2f4f7; color: #17202a; font-family: Arial, "Noto Sans KR", sans-serif; }
+      main { max-width: 960px; margin: 0 auto; padding: 28px; }
+      header, section { background: #fff; border: 1px solid #d7dde6; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 12px 28px rgba(16,24,40,.07); }
+      h1, h2 { margin: 0; letter-spacing: 0; }
+      h1 { font-size: 28px; }
+      p { color: #667085; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .row { display: grid; grid-template-columns: 1.1fr .8fr .7fr .7fr .7fr auto; gap: 8px; align-items: end; border-top: 1px solid #d7dde6; padding-top: 12px; margin-top: 12px; }
+      label { display: grid; gap: 6px; color: #667085; font-size: 13px; }
+      input, select, textarea { width: 100%; border: 1px solid #d7dde6; border-radius: 7px; padding: 10px; font-size: 14px; box-sizing: border-box; }
+      button { border: 1px solid #d7dde6; background: #fff; border-radius: 7px; padding: 10px 13px; font-weight: 800; cursor: pointer; }
+      button.primary { background: #1f6feb; border-color: #1f6feb; color: white; }
+      textarea { min-height: 130px; font-family: ui-monospace, Consolas, monospace; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .muted { font-size: 13px; }
+      #status { color: #07835f; font-weight: 800; }
+      @media (max-width: 840px) { .grid, .row { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Briefolio Settings</h1>
+        <p>웹에서 보유 종목과 주식 모으기 설정을 저장하면, 매일 아침 GitHub Actions 브리핑 메일이 이 설정을 읽습니다.</p>
+        <p id="status"></p>
+      </header>
+
+      <section>
+        <h2>연결 설정</h2>
+        <p class="muted">Google Apps Script 웹앱 URL을 넣으세요. 이 값은 이 브라우저에만 저장됩니다.</p>
+        <label>Apps Script URL<input id="endpoint" placeholder="https://script.google.com/macros/s/.../exec"></label>
+        <div class="actions" style="margin-top:12px">
+          <button id="loadBtn">불러오기</button>
+          <button id="saveEndpointBtn">URL 저장</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>메일 설정</h2>
+        <div class="grid">
+          <label>받을 이메일<input id="recipient" type="email"></label>
+          <label>발송 시간<input id="sendTime" type="time"></label>
+          <label>시간대<input id="timezone"></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>보유 종목</h2>
+        <div id="holdings"></div>
+        <div class="actions" style="margin-top:14px">
+          <button id="addBtn">종목 추가</button>
+          <button id="saveBtn" class="primary">웹 설정 저장</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>백업 JSON</h2>
+        <p class="muted">문제가 생기면 이 JSON을 복사해서 보관하세요.</p>
+        <textarea id="jsonBox"></textarea>
+      </section>
+    </main>
+    <script>
+      const defaults = {
+        settings: { recipient: "blossom0948@gmail.com", send_time: "07:00", timezone: "Asia/Seoul" },
+        holdings: [
+          { id: "samsung-electronics", name: "삼성전자", symbol: "005930", market: "KR", quantity: 0, average_price: 0, plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "매주 월요일 1만원 모으기" }, transactions: [] },
+          { id: "qqqm", name: "QQQM", symbol: "QQQM", market: "US", quantity: 0, average_price: 0, plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10, currency: "USD", memo: "" }, transactions: [] },
+          { id: "voo", name: "VOO", symbol: "VOO", market: "US", quantity: 0, average_price: 0, plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10, currency: "USD", memo: "" }, transactions: [] }
+        ]
+      };
+      let portfolio = structuredClone(defaults);
+      const $ = (id) => document.getElementById(id);
+      const weekdays = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
+      function status(text) { $("status").textContent = text; }
+      function render() {
+        $("recipient").value = portfolio.settings.recipient || "";
+        $("sendTime").value = portfolio.settings.send_time || "07:00";
+        $("timezone").value = portfolio.settings.timezone || "Asia/Seoul";
+        $("holdings").innerHTML = portfolio.holdings.map((h, i) => `
+          <div class="row" data-index="${i}">
+            <label>종목명<input data-field="name" value="${h.name || ""}"></label>
+            <label>티커<input data-field="symbol" value="${h.symbol || ""}"></label>
+            <label>시장<select data-field="market"><option value="KR" ${h.market === "KR" ? "selected" : ""}>한국</option><option value="US" ${h.market === "US" ? "selected" : ""}>미국</option></select></label>
+            <label>수량<input data-field="quantity" type="number" step="0.000001" value="${h.quantity || 0}"></label>
+            <label>평단<input data-field="average_price" type="number" step="0.01" value="${h.average_price || 0}"></label>
+            <button data-remove="${i}">삭제</button>
+            <label>모으기<input data-plan="enabled" type="checkbox" ${h.plan?.enabled ? "checked" : ""}></label>
+            <label>주기<select data-plan="frequency"><option value="weekly" ${h.plan?.frequency !== "monthly" ? "selected" : ""}>매주</option><option value="monthly" ${h.plan?.frequency === "monthly" ? "selected" : ""}>매월</option></select></label>
+            <label>요일<select data-plan="weekday">${Object.entries(weekdays).map(([k,v]) => `<option value="${k}" ${h.plan?.weekday === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+            <label>금액<input data-plan="amount" type="number" step="0.01" value="${h.plan?.amount || 0}"></label>
+            <label>메모<input data-plan="memo" value="${h.plan?.memo || ""}"></label>
+          </div>
+        `).join("");
+        $("jsonBox").value = JSON.stringify(portfolio, null, 2);
+      }
+      function syncFromInputs() {
+        portfolio.settings = { recipient: $("recipient").value, send_time: $("sendTime").value, timezone: $("timezone").value };
+        document.querySelectorAll(".row").forEach((row) => {
+          const h = portfolio.holdings[Number(row.dataset.index)];
+          row.querySelectorAll("[data-field]").forEach((input) => {
+            const field = input.dataset.field;
+            h[field] = ["quantity", "average_price"].includes(field) ? Number(input.value || 0) : input.value;
+          });
+          h.plan = h.plan || {};
+          row.querySelectorAll("[data-plan]").forEach((input) => {
+            const field = input.dataset.plan;
+            h.plan[field] = input.type === "checkbox" ? input.checked : (field === "amount" ? Number(input.value || 0) : input.value);
+          });
+          h.plan.currency = h.market === "KR" ? "KRW" : "USD";
+          h.id = h.id || `${h.market.toLowerCase()}-${h.symbol.toLowerCase()}`;
+          h.transactions = h.transactions || [];
+        });
+        $("jsonBox").value = JSON.stringify(portfolio, null, 2);
+      }
+      $("holdings").addEventListener("input", syncFromInputs);
+      $("holdings").addEventListener("change", syncFromInputs);
+      $("holdings").addEventListener("click", (event) => {
+        if (!event.target.dataset.remove) return;
+        portfolio.holdings.splice(Number(event.target.dataset.remove), 1);
+        render();
+      });
+      $("addBtn").onclick = () => { syncFromInputs(); portfolio.holdings.push({ id: crypto.randomUUID(), name: "", symbol: "", market: "US", quantity: 0, average_price: 0, plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 0, currency: "USD", memo: "" }, transactions: [] }); render(); };
+      $("saveEndpointBtn").onclick = () => { localStorage.setItem("briefolioEndpoint", $("endpoint").value); status("URL을 저장했습니다."); };
+      $("loadBtn").onclick = async () => {
+        localStorage.setItem("briefolioEndpoint", $("endpoint").value);
+        const res = await fetch($("endpoint").value);
+        portfolio = await res.json();
+        render();
+        status("설정을 불러왔습니다.");
+      };
+      $("saveBtn").onclick = async () => {
+        syncFromInputs();
+        localStorage.setItem("briefolioEndpoint", $("endpoint").value);
+        await fetch($("endpoint").value, { method: "POST", mode: "no-cors", body: JSON.stringify(portfolio) });
+        status("저장 요청을 보냈습니다. 불러오기로 확인해보세요.");
+      };
+      $("jsonBox").addEventListener("change", () => { portfolio = JSON.parse($("jsonBox").value); render(); });
+      $("endpoint").value = localStorage.getItem("briefolioEndpoint") || "";
+      render();
+    </script>
+  </body>
+</html>

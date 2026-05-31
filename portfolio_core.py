@@ -90,6 +90,15 @@ def default_portfolio() -> dict[str, Any]:
 
 
 def load_portfolio() -> dict[str, Any]:
+    config_url = os.environ.get("PORTFOLIO_CONFIG_URL")
+    if config_url:
+        response = requests.get(config_url, timeout=20)
+        response.raise_for_status()
+        portfolio = response.json()
+        portfolio.setdefault("settings", default_portfolio()["settings"])
+        portfolio.setdefault("holdings", [])
+        portfolio["holdings"] = [normalize_holding(item) for item in portfolio["holdings"]]
+        return portfolio
     if not DATA_PATH.exists():
         portfolio = default_portfolio()
         save_portfolio(portfolio)
