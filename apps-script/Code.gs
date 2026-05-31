@@ -69,7 +69,13 @@ function jsonOutput(value) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.app === "1") {
+    return HtmlService
+      .createHtmlOutputFromFile("Index")
+      .setTitle("Briefolio")
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   const stored = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEY);
   return jsonOutput(stored ? JSON.parse(stored) : defaultPortfolio());
 }
@@ -79,4 +85,14 @@ function doPost(e) {
   const portfolio = JSON.parse(body);
   PropertiesService.getScriptProperties().setProperty(PROPERTY_KEY, JSON.stringify(portfolio));
   return jsonOutput({ ok: true, savedAt: new Date().toISOString() });
+}
+
+function getPortfolio() {
+  const stored = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEY);
+  return stored ? JSON.parse(stored) : defaultPortfolio();
+}
+
+function savePortfolio(portfolio) {
+  PropertiesService.getScriptProperties().setProperty(PROPERTY_KEY, JSON.stringify(portfolio));
+  return { ok: true, savedAt: new Date().toISOString() };
 }

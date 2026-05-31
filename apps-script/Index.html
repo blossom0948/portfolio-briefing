@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { margin: 0; background: #f2f4f7; color: #17202a; font-family: Arial, "Noto Sans KR", sans-serif; }
+      main { max-width: 880px; margin: 0 auto; padding: 20px; }
+      header, section { background: #fff; border: 1px solid #d7dde6; border-radius: 8px; padding: 18px; margin-bottom: 14px; box-shadow: 0 10px 24px rgba(16,24,40,.07); }
+      h1, h2 { margin: 0; letter-spacing: 0; }
+      h1 { font-size: 25px; }
+      h2 { font-size: 18px; }
+      p { color: #667085; line-height: 1.5; }
+      .row { display: grid; grid-template-columns: 1fr; gap: 10px; border-top: 1px solid #d7dde6; padding-top: 12px; margin-top: 12px; }
+      .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      label { display: grid; gap: 6px; color: #667085; font-size: 13px; }
+      input, select { width: 100%; border: 1px solid #d7dde6; border-radius: 7px; padding: 10px; font-size: 16px; box-sizing: border-box; }
+      button { border: 1px solid #d7dde6; background: #fff; border-radius: 7px; padding: 11px 13px; font-weight: 800; cursor: pointer; }
+      button.primary { background: #1f6feb; border-color: #1f6feb; color: white; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+      .status { color: #07835f; font-weight: 800; min-height: 20px; }
+      .stock-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+      @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Briefolio</h1>
+        <p>핸드폰에서 보유 종목, 평단, 주식 모으기 계획을 저장하세요. 매일 오전 7시 메일은 이 설정을 읽습니다.</p>
+        <div id="status" class="status">불러오는 중...</div>
+      </header>
+
+      <section>
+        <h2>메일 설정</h2>
+        <div class="grid">
+          <label>받을 이메일<input id="recipient" type="email"></label>
+          <label>발송 시간<input id="sendTime" type="time"></label>
+          <label>시간대<input id="timezone"></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>보유 종목</h2>
+        <div id="holdings"></div>
+        <div class="actions">
+          <button id="addBtn">종목 추가</button>
+          <button id="saveBtn" class="primary">저장</button>
+        </div>
+      </section>
+    </main>
+    <script>
+      let portfolio = null;
+      const $ = (id) => document.getElementById(id);
+      const weekdays = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
+      function status(text) { $("status").textContent = text; }
+      function render() {
+        $("recipient").value = portfolio.settings.recipient || "";
+        $("sendTime").value = portfolio.settings.send_time || "07:00";
+        $("timezone").value = portfolio.settings.timezone || "Asia/Seoul";
+        $("holdings").innerHTML = portfolio.holdings.map((h, i) => `
+          <article class="row" data-index="${i}">
+            <div class="stock-head"><strong>${h.name || "새 종목"}</strong><button data-remove="${i}">삭제</button></div>
+            <div class="grid">
+              <label>종목명<input data-field="name" value="${h.name || ""}"></label>
+              <label>티커<input data-field="symbol" value="${h.symbol || ""}"></label>
+              <label>시장<select data-field="market"><option value="KR" ${h.market === "KR" ? "selected" : ""}>한국</option><option value="US" ${h.market === "US" ? "selected" : ""}>미국</option></select></label>
+              <label>수량<input data-field="quantity" type="number" step="0.000001" value="${h.quantity || 0}"></label>
+              <label>평단<input data-field="average_price" type="number" step="0.01" value="${h.average_price || 0}"></label>
+              <label>모으기 사용<select data-plan="enabled"><option value="false" ${!h.plan?.enabled ? "selected" : ""}>끔</option><option value="true" ${h.plan?.enabled ? "selected" : ""}>켬</option></select></label>
+              <label>주기<select data-plan="frequency"><option value="weekly" ${h.plan?.frequency !== "monthly" ? "selected" : ""}>매주</option><option value="monthly" ${h.plan?.frequency === "monthly" ? "selected" : ""}>매월</option></select></label>
+              <label>요일<select data-plan="weekday">${Object.entries(weekdays).map(([k,v]) => `<option value="${k}" ${h.plan?.weekday === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+              <label>금액<input data-plan="amount" type="number" step="0.01" value="${h.plan?.amount || 0}"></label>
+              <label>메모<input data-plan="memo" value="${h.plan?.memo || ""}"></label>
+            </div>
+          </article>
+        `).join("");
+      }
+      function sync() {
+        portfolio.settings = { recipient: $("recipient").value, send_time: $("sendTime").value, timezone: $("timezone").value };
+        document.querySelectorAll(".row").forEach((row) => {
+          const h = portfolio.holdings[Number(row.dataset.index)];
+          row.querySelectorAll("[data-field]").forEach((input) => {
+            const field = input.dataset.field;
+            h[field] = ["quantity", "average_price"].includes(field) ? Number(input.value || 0) : input.value;
+          });
+          h.plan = h.plan || {};
+          row.querySelectorAll("[data-plan]").forEach((input) => {
+            const field = input.dataset.plan;
+            h.plan[field] = field === "enabled" ? input.value === "true" : (field === "amount" ? Number(input.value || 0) : input.value);
+          });
+          h.id = h.id || `${h.market.toLowerCase()}-${h.symbol.toLowerCase()}`;
+          h.plan.currency = h.market === "KR" ? "KRW" : "USD";
+          h.transactions = h.transactions || [];
+        });
+      }
+      $("holdings").addEventListener("input", sync);
+      $("holdings").addEventListener("change", sync);
+      $("holdings").addEventListener("click", (event) => {
+        if (!event.target.dataset.remove) return;
+        portfolio.holdings.splice(Number(event.target.dataset.remove), 1);
+        render();
+      });
+      $("addBtn").onclick = () => {
+        sync();
+        portfolio.holdings.push({ id: String(Date.now()), name: "", symbol: "", market: "US", quantity: 0, average_price: 0, plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 0, currency: "USD", memo: "" }, transactions: [] });
+        render();
+      };
+      $("saveBtn").onclick = () => {
+        sync();
+        status("저장 중...");
+        google.script.run
+          .withSuccessHandler(() => status("저장했습니다. 다음 메일에 반영됩니다."))
+          .withFailureHandler((err) => status("저장 실패: " + err.message))
+          .savePortfolio(portfolio);
+      };
+      google.script.run
+        .withSuccessHandler((data) => { portfolio = data; render(); status("설정을 불러왔습니다."); })
+        .withFailureHandler((err) => status("불러오기 실패: " + err.message))
+        .getPortfolio();
+    </script>
+  </body>
+</html>

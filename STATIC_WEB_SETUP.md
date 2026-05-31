@@ -29,10 +29,12 @@ https://blossom0948.github.io/portfolio-briefing/
 1. [Apps Script](https://script.google.com/)에 들어갑니다.
 2. 새 프로젝트를 만듭니다.
 3. `apps-script/Code.gs` 파일 내용을 복사해서 붙여넣습니다.
-4. `배포` -> `새 배포`를 누릅니다.
-5. 유형은 `웹 앱`을 선택합니다.
-6. 실행 사용자는 `나`, 액세스 권한은 `모든 사용자`로 둡니다.
-7. 배포 후 나온 Web app URL을 복사합니다.
+4. 왼쪽의 `+` 버튼으로 HTML 파일을 만들고 이름을 `Index`로 둡니다.
+5. `apps-script/Index.html` 파일 내용을 복사해서 붙여넣습니다.
+6. `배포` -> `새 배포`를 누릅니다.
+7. 유형은 `웹 앱`을 선택합니다.
+8. 실행 사용자는 `나`, 액세스 권한은 `모든 사용자`로 둡니다.
+9. 배포 후 나온 Web app URL을 복사합니다.
 
 ## 3. GitHub Actions에 설정 URL 저장
 
@@ -50,11 +52,18 @@ PORTFOLIO_CONFIG_URL=Apps Script Web app URL
 
 ## 4. 웹에서 설정 저장
 
-1. GitHub Pages 주소로 접속합니다.
-2. Apps Script URL을 입력합니다.
-3. 보유 수량, 평단, 주식 모으기 계획을 입력합니다.
-4. `웹 설정 저장`을 누릅니다.
-5. `불러오기`를 눌러 저장값이 다시 뜨면 성공입니다.
+핸드폰에서는 Apps Script Web App URL 뒤에 `?app=1`을 붙여 접속하는 것이 가장 안정적입니다.
+
+```text
+https://script.google.com/macros/s/.../exec?app=1
+```
+
+1. 위 주소로 접속합니다.
+2. 보유 수량, 평단, 주식 모으기 계획을 입력합니다.
+3. `저장`을 누릅니다.
+4. "저장했습니다" 메시지가 뜨면 다음 메일에 반영됩니다.
+
+GitHub Pages 주소는 안내용/백업용으로 둬도 됩니다. 실제 핸드폰 입력은 Apps Script 웹앱을 추천합니다.
 
 ## 5. 메일 테스트
 
