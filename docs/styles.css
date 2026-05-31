@@ -1,0 +1,25 @@
+@import url("../static/styles.css");
+
+main { min-height: 100vh; }
+.small-pre { max-height: 320px; }
+.holding-form-card {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+.holding-form-card .wide-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: .6fr .7fr .7fr .7fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+@media (max-width: 920px) {
+  .holding-form-card,
+  .holding-form-card .wide-row { grid-template-columns: 1fr; }
+}

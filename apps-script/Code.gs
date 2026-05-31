@@ -77,6 +77,9 @@ function doGet(e) {
       .setTitle("Briefolio")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
+  if (e && e.parameter && e.parameter.brief === "1") {
+    return jsonOutput(getLastBriefing());
+  }
   const stored = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEY);
   return jsonOutput(stored ? JSON.parse(stored) : defaultPortfolio());
 }
