@@ -289,6 +289,29 @@ $("#settingsForm").addEventListener("submit", async (event) => {
   }
 });
 
+$("#exampleQuestionBtn").addEventListener("click", () => {
+  $("#aiQuestion").value = "삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?";
+});
+
+$("#askAiBtn").addEventListener("click", async () => {
+  const question = $("#aiQuestion").value.trim();
+  if (!question) {
+    $("#aiAnswer").textContent = "질문을 입력하세요.";
+    return;
+  }
+  $("#aiAnswer").textContent = "AI가 포트폴리오와 브리핑을 읽고 계산하는 중입니다...";
+  try {
+    const result = await requestJson("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    $("#aiAnswer").textContent = result.answer;
+  } catch (error) {
+    $("#aiAnswer").textContent = `AI 답변 실패: ${error.message}`;
+  }
+});
+
 $("#tradeForm").date.valueAsDate = new Date();
 loadAll().catch((error) => {
   $("#briefingText").textContent = `초기 로딩 실패: ${error.message}`;

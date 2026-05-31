@@ -445,6 +445,85 @@ def build_briefing_html() -> str:
     return f"<div style=\"font-family:Arial,sans-serif;line-height:1.55\">{escaped}</div>"
 
 
+def ask_ai(question: str) -> str:
+    load_env()
+    question = question.strip()
+    if not question:
+        return "질문을 입력하세요."
+    snapshot = get_portfolio_snapshot()
+    briefing = build_briefing_text()
+    context = {
+        "snapshot": snapshot,
+        "briefing": briefing,
+    }
+    prompt = (
+        "너는 개인 포트폴리오 분석 도우미다. 한국어로 답하고, 투자 판단을 단정하지 말고 "
+        "계산 가정, 시나리오, 체크포인트 중심으로 설명해라. 사용자의 보유 종목은 삼성전자, "
+        "QQQM, VOO를 포함할 수 있다. 숫자 계산이 필요한 질문은 식과 결과를 간결히 보여줘라.\n\n"
+        f"현재 포트폴리오 데이터:\n{json.dumps(context, ensure_ascii=False)}\n\n"
+        f"사용자 질문:\n{question}"
+    )
+
+    if os.environ.get("OPENAI_API_KEY"):
+        return ask_openai(prompt)
+    if os.environ.get("GEMINI_API_KEY"):
+        return ask_gemini(prompt)
+    return (
+        "AI API 키가 아직 설정되지 않았습니다.\n\n"
+        "로컬 .env 파일에 OPENAI_API_KEY를 추가하면 이 대시보드에서 바로 질문할 수 있습니다. "
+        "Gemini를 쓰려면 GEMINI_API_KEY도 가능하지만, 지금 보신 quota 오류가 있으면 OpenAI 쪽이 더 안정적입니다."
+    )
+
+
+def ask_openai(prompt: str) -> str:
+    model = os.environ.get("OPENAI_MODEL", "gpt-5.2")
+    response = requests.post(
+        "https://api.openai.com/v1/responses",
+        headers={
+            "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "input": prompt,
+        },
+        timeout=60,
+    )
+    data = response.json()
+    if response.status_code >= 400:
+        message = data.get("error", {}).get("message") or response.text
+        return f"OpenAI 호출 실패: {message}"
+    if data.get("output_text"):
+        return data["output_text"]
+    chunks = []
+    for item in data.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                chunks.append(content["text"])
+    return "\n".join(chunks).strip() or "AI 응답을 읽지 못했습니다."
+
+
+def ask_gemini(prompt: str) -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    response = requests.post(
+        url,
+        params={"key": os.environ["GEMINI_API_KEY"]},
+        json={
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1200},
+        },
+        timeout=60,
+    )
+    data = response.json()
+    if response.status_code >= 400:
+        message = data.get("error", {}).get("message") or response.text
+        return f"Gemini 호출 실패: {message}"
+    candidates = data.get("candidates") or []
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    return "".join(part.get("text", "") for part in parts).strip() or "AI 응답을 읽지 못했습니다."
+
+
 def send_briefing_email() -> None:
     load_env()
     portfolio = load_portfolio()

@@ -119,6 +119,21 @@
         </div>
       </section>
 
+      <section id="ai" class="panel ai-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">AI 질문</p>
+            <h2>내 포트폴리오에 대해 물어보기</h2>
+          </div>
+          <button id="exampleQuestionBtn">예시 질문</button>
+        </div>
+        <div class="ai-box">
+          <textarea id="aiQuestion" placeholder="예: 삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?"></textarea>
+          <button id="askAiBtn" class="primary">AI 답변 받기</button>
+        </div>
+        <pre id="aiAnswer">AI API 키를 .env에 설정하면 여기서 바로 답변을 받을 수 있습니다.</pre>
+      </section>
+
       <section id="settings" class="panel">
         <p class="eyebrow">알림 설정</p>
         <h2>아침 브리핑 메일</h2>

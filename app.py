@@ -59,6 +59,12 @@ def briefing():
     return jsonify({"text": core.build_briefing_text()})
 
 
+@app.post("/api/ai")
+def ai():
+    question = (request.json or {}).get("question", "")
+    return jsonify({"answer": core.ask_ai(question)})
+
+
 @app.post("/api/holdings")
 def add_holding():
     portfolio = core.load_portfolio()

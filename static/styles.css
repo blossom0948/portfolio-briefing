@@ -448,6 +448,20 @@ pre {
   overflow-x: auto;
 }
 
+.ai-panel textarea {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.ai-box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 16px;
+}
+
 .brief-actions {
   justify-content: flex-end;
   margin-top: 14px;
