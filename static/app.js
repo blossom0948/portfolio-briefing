@@ -156,6 +156,14 @@ function fillSettings(portfolio) {
   form.timezone.value = settings.timezone || "Asia/Seoul";
 }
 
+function showView(name) {
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+  document.querySelector(`#view-${name}`).classList.add("active");
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === name);
+  });
+}
+
 async function loadAll() {
   $("#briefingText").textContent = "불러오는 중...";
   const [portfolio, snapshot, news, briefing] = await Promise.all([
@@ -175,22 +183,9 @@ async function loadAll() {
   $("#briefingText").textContent = briefing.text;
 }
 
-function openBrief() {
-  $("#briefDrawer").classList.add("open");
-  $("#briefDrawer").setAttribute("aria-hidden", "false");
-}
-
-function closeBrief() {
-  $("#briefDrawer").classList.remove("open");
-  $("#briefDrawer").setAttribute("aria-hidden", "true");
-}
-
-$("#openBriefBtn").addEventListener("click", async () => {
-  openBrief();
-  if (!state.briefing) await loadAll();
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.addEventListener("click", () => showView(item.dataset.view));
 });
-
-document.querySelectorAll("[data-close-brief]").forEach((button) => button.addEventListener("click", closeBrief));
 
 $("#refreshBtn").addEventListener("click", async () => {
   try {
@@ -202,7 +197,6 @@ $("#refreshBtn").addEventListener("click", async () => {
 });
 
 $("#sendBtn").addEventListener("click", sendTest);
-$("#sendBriefBtn").addEventListener("click", sendTest);
 
 async function sendTest() {
   try {

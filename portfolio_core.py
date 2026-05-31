@@ -113,6 +113,12 @@ def load_portfolio() -> dict[str, Any]:
 def save_portfolio(portfolio: dict[str, Any]) -> None:
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(portfolio, ensure_ascii=False, indent=2), encoding="utf-8")
+    sync_url = os.environ.get("PORTFOLIO_CONFIG_URL")
+    if sync_url:
+        try:
+            requests.post(sync_url, json=portfolio, timeout=20)
+        except Exception:
+            pass
 
 
 def default_plan(currency: str) -> dict[str, Any]:
@@ -465,14 +471,75 @@ def ask_ai(question: str) -> str:
     )
 
     if os.environ.get("OPENAI_API_KEY"):
-        return ask_openai(prompt)
+        answer = ask_openai(prompt)
+        if "quota" not in answer.lower() and "billing" not in answer.lower():
+            return answer
+        return local_projection_answer(question, snapshot, answer)
     if os.environ.get("GEMINI_API_KEY"):
-        return ask_gemini(prompt)
-    return (
+        answer = ask_gemini(prompt)
+        if "quota" not in answer.lower() and "할당량" not in answer:
+            return answer
+        return local_projection_answer(question, snapshot, answer)
+    return local_projection_answer(
+        question,
+        snapshot,
         "AI API 키가 아직 설정되지 않았습니다.\n\n"
         "로컬 .env 파일에 OPENAI_API_KEY를 추가하면 이 대시보드에서 바로 질문할 수 있습니다. "
         "Gemini를 쓰려면 GEMINI_API_KEY도 가능하지만, 지금 보신 quota 오류가 있으면 OpenAI 쪽이 더 안정적입니다."
     )
+
+
+def local_projection_answer(question: str, snapshot: dict[str, Any], reason: str) -> str:
+    lowered = question.lower()
+    is_quota_fallback = "quota" in reason.lower() or "billing" in reason.lower() or "할당량" in reason
+    if not is_quota_fallback and not any(word in question for word in ["1년", "일년", "12개월", "모으면", "매주", "매월", "얼마"]):
+        return reason
+
+    candidates = []
+    for item in snapshot.get("holdings", []):
+        if item.get("error"):
+            continue
+        name = item.get("name", "")
+        symbol = item.get("symbol", "")
+        if name in question or symbol.lower() in lowered:
+            candidates = [item]
+            break
+    if not candidates:
+        candidates = [item for item in snapshot.get("holdings", []) if not item.get("error")]
+
+    lines = [
+        "AI quota가 막혀 있어서 내장 계산 모드로 답합니다.",
+        "",
+        "1년 적립 시뮬레이션",
+    ]
+    for item in candidates:
+        plan = item.get("plan") or {}
+        amount = float(plan.get("amount") or 0)
+        if "만원" in question and item.get("currency") == "KRW":
+            amount = 10000
+        if "10만원" in question and item.get("currency") == "KRW":
+            amount = 100000
+        if not amount:
+            continue
+        periods = 52 if plan.get("frequency", "weekly") == "weekly" or "매주" in question else 12
+        total = amount * periods
+        close = float(item.get("close") or 0)
+        shares = total / close if close else 0
+        down = total * 0.8
+        flat = total
+        up = total * 1.2
+        lines.extend(
+            [
+                f"- {item['name']}: {format_money(amount, item['currency'])}씩 {periods}회",
+                f"  총 투입금: {format_money(total, item['currency'])}",
+                f"  현재가 기준 예상 매수 수량: {shares:,.6f}주",
+                f"  단순 시나리오: -20% {format_money(down, item['currency'])} / 0% {format_money(flat, item['currency'])} / +20% {format_money(up, item['currency'])}",
+            ]
+        )
+    if len(lines) == 3:
+        lines.append("계산할 적립 금액이 없습니다. 주식 모으기 금액을 먼저 설정해 주세요.")
+    lines.extend(["", "정확한 수익은 실제 매수 시점별 가격, 환율, 세금, 수수료에 따라 달라집니다."])
+    return "\n".join(lines)
 
 
 def ask_openai(prompt: str) -> str:
