@@ -123,4 +123,4 @@ if __name__ == "__main__":
     core.load_env()
     if core.os.environ.get("ENABLE_APP_SCHEDULER", "false").lower() == "true":
         start_scheduler()
-    app.run(host="127.0.0.1", port=5050, debug=False)
+    app.run(host=core.os.environ.get("APP_HOST", "0.0.0.0"), port=int(core.os.environ.get("APP_PORT", "5050")), debug=False)
