@@ -141,6 +141,7 @@ def default_portfolio() -> dict[str, Any]:
                 "market": "KR",
                 "quantity": 0,
                 "average_price": 0,
+                "average_price_currency": "KRW",
                 "plan": default_plan("KRW"),
                 "transactions": [],
             },
@@ -151,7 +152,8 @@ def default_portfolio() -> dict[str, Any]:
                 "market": "US",
                 "quantity": 0,
                 "average_price": 0,
-                "plan": default_plan("USD"),
+                "average_price_currency": "USD",
+                "plan": {**default_plan("KRW"), "amount": 10000},
                 "transactions": [],
             },
             {
@@ -161,7 +163,8 @@ def default_portfolio() -> dict[str, Any]:
                 "market": "US",
                 "quantity": 0,
                 "average_price": 0,
-                "plan": default_plan("USD"),
+                "average_price_currency": "USD",
+                "plan": {**default_plan("KRW"), "amount": 10000},
                 "transactions": [],
             },
         ],
@@ -211,6 +214,11 @@ def default_plan(currency: str) -> dict[str, Any]:
     }
 
 
+def sanitize_currency(value: Any, fallback: str = "KRW") -> str:
+    currency = str(value or fallback).strip().upper()
+    return currency if currency in {"KRW", "USD"} else fallback
+
+
 def normalize_holding(raw: dict[str, Any]) -> dict[str, Any]:
     symbol = str(raw.get("symbol", "")).strip().upper()
     market = str(raw.get("market", "")).strip().upper() or ("KR" if symbol.isdigit() else "US")
@@ -220,6 +228,8 @@ def normalize_holding(raw: dict[str, Any]) -> dict[str, Any]:
     plan = {**default_plan(currency), **(raw.get("plan") or {})}
     plan["enabled"] = bool(plan.get("enabled"))
     plan["amount"] = float(plan.get("amount") or 0)
+    plan["currency"] = "KRW" if market == "KR" else sanitize_currency(plan.get("currency"), currency)
+    average_price_currency = "KRW" if market == "KR" else sanitize_currency(raw.get("average_price_currency"), currency)
     return {
         "id": item_id,
         "name": name,
@@ -227,9 +237,38 @@ def normalize_holding(raw: dict[str, Any]) -> dict[str, Any]:
         "market": market,
         "quantity": float(raw.get("quantity") or 0),
         "average_price": float(raw.get("average_price") or 0),
+        "average_price_currency": average_price_currency,
         "plan": plan,
         "transactions": list(raw.get("transactions") or []),
     }
+
+
+def get_usd_krw_rate() -> float:
+    fallback = float(os.environ.get("USD_KRW_FALLBACK", "1350") or 1350)
+    try:
+        hist = yf.Ticker("KRW=X").history(period="5d", interval="1d", auto_adjust=False)
+        hist = hist.dropna(subset=["Close"])
+        if hist.empty:
+            return fallback
+        return round(float(hist.iloc[-1]["Close"]), 2)
+    except Exception:
+        return fallback
+
+
+def to_quote_amount(amount: float, from_currency: str, quote_currency: str, usd_krw_rate: float) -> float:
+    source = sanitize_currency(from_currency, quote_currency)
+    target = sanitize_currency(quote_currency, source)
+    if source == target:
+        return float(amount or 0)
+    if source == "KRW" and target == "USD":
+        return float(amount or 0) / usd_krw_rate if usd_krw_rate else 0
+    if source == "USD" and target == "KRW":
+        return float(amount or 0) * usd_krw_rate
+    return float(amount or 0)
+
+
+def to_krw_amount(amount: float, currency: str, usd_krw_rate: float) -> float:
+    return to_quote_amount(amount, currency, "KRW", usd_krw_rate)
 
 
 def update_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -294,29 +333,41 @@ def _latest_us_price(symbol: str, name: str) -> Price:
     )
 
 
-def get_price(holding: dict[str, Any]) -> dict[str, Any]:
+def get_price(holding: dict[str, Any], usd_krw_rate: float | None = None) -> dict[str, Any]:
     item = normalize_holding(holding)
+    usd_krw_rate = usd_krw_rate or get_usd_krw_rate()
     price = _latest_kr_price(item["symbol"], item["name"]) if item["market"] == "KR" else _latest_us_price(item["symbol"], item["name"])
     quantity = float(item.get("quantity") or 0)
     average_price = float(item.get("average_price") or 0)
+    average_price_currency = item.get("average_price_currency") or price.currency
+    average_price_quote = to_quote_amount(average_price, average_price_currency, price.currency, usd_krw_rate)
     value = price.close * quantity if quantity else 0
-    cost = average_price * quantity if quantity and average_price else 0
+    cost = average_price_quote * quantity if quantity and average_price_quote else 0
     profit = value - cost if cost else 0
     profit_pct = round((value / cost - 1) * 100, 2) if cost else None
     plan = item.get("plan") or default_plan(price.currency)
-    estimated_shares = round((float(plan.get("amount") or 0) / price.close), 6) if price.close and plan.get("amount") else 0
+    plan_quote_amount = to_quote_amount(float(plan.get("amount") or 0), plan.get("currency") or price.currency, price.currency, usd_krw_rate)
+    estimated_shares = round((plan_quote_amount / price.close), 6) if price.close and plan_quote_amount else 0
     return {
         **item,
         "date": price.date,
         "close": price.close,
         "currency": price.currency,
+        "usd_krw_rate": usd_krw_rate,
         "change": price.change,
         "change_pct": price.change_pct,
         "value": round(value, 2),
         "cost": round(cost, 2),
         "profit": round(profit, 2),
         "profit_pct": profit_pct,
+        "average_price_quote": round(average_price_quote, 4),
+        "plan_quote_amount": round(plan_quote_amount, 4),
         "plan_estimated_shares": estimated_shares,
+        "krw_close": round(to_krw_amount(price.close, price.currency, usd_krw_rate), 2),
+        "krw_change": round(to_krw_amount(price.change or 0, price.currency, usd_krw_rate), 2) if price.change is not None else None,
+        "krw_value": round(to_krw_amount(value, price.currency, usd_krw_rate), 2),
+        "krw_cost": round(to_krw_amount(cost, price.currency, usd_krw_rate), 2),
+        "krw_profit": round(to_krw_amount(profit, price.currency, usd_krw_rate), 2),
     }
 
 
@@ -349,22 +400,26 @@ def get_portfolio_snapshot() -> dict[str, Any]:
     portfolio = load_portfolio()
     rows = []
     errors = []
+    usd_krw_rate = get_usd_krw_rate()
     for holding in portfolio.get("holdings", []):
         try:
-            rows.append(get_price(holding))
+            rows.append(get_price(holding, usd_krw_rate))
         except Exception as exc:
             errors.append({"symbol": holding["symbol"], "message": str(exc)})
             rows.append({**holding, "error": str(exc)})
     total_value_krw = sum(item.get("value", 0) for item in rows if item.get("currency") == "KRW")
     total_value_usd = sum(item.get("value", 0) for item in rows if item.get("currency") == "USD")
+    total_value_krw_converted = sum(item.get("krw_value", 0) for item in rows if not item.get("error"))
     active_plans = [item for item in rows if (item.get("plan") or {}).get("enabled")]
     return {
         "settings": portfolio.get("settings", {}),
         "holdings": rows,
         "errors": errors,
+        "usd_krw_rate": usd_krw_rate,
         "totals": {
             "KRW": round(total_value_krw, 2),
             "USD": round(total_value_usd, 2),
+            "KRW_CONVERTED": round(total_value_krw_converted, 2),
         },
         "active_plans": len(active_plans),
         "updated_at": now_kst().strftime("%Y-%m-%d %H:%M"),
@@ -383,23 +438,34 @@ def apply_transaction(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         price = float(payload.get("price") or 0)
         if quantity <= 0 or price <= 0:
             raise ValueError("수량과 가격은 0보다 커야 합니다.")
+        quote_currency = "KRW" if item["market"] == "KR" else "USD"
+        price_currency = "KRW" if item["market"] == "KR" else sanitize_currency(payload.get("price_currency"), quote_currency)
+        usd_krw_rate = get_usd_krw_rate()
+        price_quote = to_quote_amount(price, price_currency, quote_currency, usd_krw_rate)
         current_qty = float(item["quantity"])
-        current_avg = float(item["average_price"])
+        current_avg = to_quote_amount(
+            float(item["average_price"]),
+            item.get("average_price_currency", quote_currency),
+            quote_currency,
+            usd_krw_rate,
+        )
         if side == "sell":
             new_qty = max(0, current_qty - quantity)
             new_avg = current_avg if new_qty else 0
         else:
             new_qty = current_qty + quantity
-            new_avg = ((current_qty * current_avg) + (quantity * price)) / new_qty
+            new_avg = ((current_qty * current_avg) + (quantity * price_quote)) / new_qty
         transaction = {
             "date": str(payload.get("date") or now_kst().strftime("%Y-%m-%d")),
             "side": side,
             "quantity": quantity,
             "price": price,
+            "price_currency": price_currency,
             "memo": str(payload.get("memo") or ""),
         }
         item["quantity"] = round(new_qty, 8)
         item["average_price"] = round(new_avg, 4)
+        item["average_price_currency"] = quote_currency
         item.setdefault("transactions", []).insert(0, transaction)
         item["transactions"] = item["transactions"][:20]
         holdings[index] = item
@@ -423,7 +489,9 @@ def update_plan(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             plan["enabled"] = bool(payload["enabled"])
         if "amount" in payload:
             plan["amount"] = float(payload["amount"] or 0)
-        plan["currency"] = "KRW" if item["market"] == "KR" else "USD"
+        if "currency" in payload:
+            plan["currency"] = sanitize_currency(payload["currency"], plan.get("currency") or ("KRW" if item["market"] == "KR" else "USD"))
+        plan["currency"] = "KRW" if item["market"] == "KR" else sanitize_currency(plan.get("currency"), "USD")
         item["plan"] = plan
         holdings[index] = item
         save_portfolio(portfolio)
@@ -852,22 +920,28 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
     return {"domestic": domestic[:limit_each], "overseas": overseas[:limit_each]}
 
 
-def format_money(value: float, currency: str) -> str:
+def format_money(value: float, currency: str, usd_krw_rate: float | None = None, dual: bool = False) -> str:
     if currency == "KRW":
         return f"{value:,.0f}원"
-    return f"${value:,.2f}"
+    text = f"${value:,.2f}"
+    if dual and usd_krw_rate:
+        text += f" (약 {to_krw_amount(value, currency, usd_krw_rate):,.0f}원)"
+    return text
 
 
 def format_change(item: dict[str, Any]) -> str:
     if item.get("change") is None:
         return "등락 정보 없음"
-    sign = "+" if item["change"] > 0 else ""
+    sign = "+" if item["change"] > 0 else "-" if item["change"] < 0 else ""
     if item["currency"] == "KRW":
-        change = f"{sign}{item['change']:,.0f}원"
+        change = f"{sign}{abs(float(item['change'])):,.0f}원"
     else:
-        change = f"{sign}${item['change']:,.2f}"
-    pct = f"{sign}{item['change_pct']}%"
-    return f"{format_money(item['close'], item['currency'])} ({change}, {pct})"
+        krw_change = item.get("krw_change")
+        change = f"{sign}${abs(float(item['change'])):,.2f}"
+        if krw_change is not None:
+            change += f" / {sign}{abs(float(krw_change)):,.0f}원"
+    pct = f"{sign}{abs(float(item['change_pct']))}%"
+    return f"{format_money(item['close'], item['currency'], item.get('usd_krw_rate'), dual=True)} ({change}, {pct})"
 
 
 def news_tone(news_items: list[dict[str, str]]) -> tuple[int, int]:
@@ -932,9 +1006,13 @@ def build_briefing_text() -> str:
     overseas_news = [summarize_news_item(item) for item in news["overseas"]]
     lines = [
         f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}",
+        f"환율: 1달러 ≈ {snapshot.get('usd_krw_rate', 0):,.2f}원",
         "",
         "가격 요약",
     ]
+    total_converted = snapshot.get("totals", {}).get("KRW_CONVERTED", 0)
+    if total_converted:
+        lines.append(f"- 총 평가액(원화 환산): {format_money(total_converted, 'KRW')}")
     for item in snapshot["holdings"]:
         if item.get("error"):
             lines.append(f"- {item['name']}: 조회 실패 ({item['error']})")
@@ -971,8 +1049,8 @@ def build_briefing_text() -> str:
     return "\n".join(lines)
 
 
-def build_briefing_html() -> str:
-    text = build_briefing_text()
+def build_briefing_html(text: str | None = None) -> str:
+    text = text or build_briefing_text()
     escaped = html.escape(text).replace("\n", "<br>")
     return f"<div style=\"font-family:Arial,sans-serif;line-height:1.55\">{escaped}</div>"
 
@@ -1040,25 +1118,30 @@ def local_projection_answer(question: str, snapshot: dict[str, Any], reason: str
     for item in candidates:
         plan = item.get("plan") or {}
         amount = float(plan.get("amount") or 0)
-        if "만원" in question and item.get("currency") == "KRW":
+        plan_currency = sanitize_currency(plan.get("currency"), item.get("currency", "KRW"))
+        rate = float(snapshot.get("usd_krw_rate") or item.get("usd_krw_rate") or get_usd_krw_rate())
+        if "만원" in question:
             amount = 10000
-        if "10만원" in question and item.get("currency") == "KRW":
+            plan_currency = "KRW"
+        if "10만원" in question:
             amount = 100000
+            plan_currency = "KRW"
         if not amount:
             continue
         periods = 52 if plan.get("frequency", "weekly") == "weekly" or "매주" in question else 12
         total = amount * periods
+        total_quote = to_quote_amount(total, plan_currency, item.get("currency", "KRW"), rate)
         close = float(item.get("close") or 0)
-        shares = total / close if close else 0
-        down = total * 0.8
-        flat = total
-        up = total * 1.2
+        shares = total_quote / close if close else 0
+        down = total_quote * 0.8
+        flat = total_quote
+        up = total_quote * 1.2
         lines.extend(
             [
-                f"- {item['name']}: {format_money(amount, item['currency'])}씩 {periods}회",
-                f"  총 투입금: {format_money(total, item['currency'])}",
+                f"- {item['name']}: {format_money(amount, plan_currency, rate, dual=True)}씩 {periods}회",
+                f"  총 투입금: {format_money(total, plan_currency, rate, dual=True)}",
                 f"  현재가 기준 예상 매수 수량: {shares:,.6f}주",
-                f"  단순 시나리오: -20% {format_money(down, item['currency'])} / 0% {format_money(flat, item['currency'])} / +20% {format_money(up, item['currency'])}",
+                f"  단순 시나리오: -20% {format_money(down, item['currency'], rate, dual=True)} / 0% {format_money(flat, item['currency'], rate, dual=True)} / +20% {format_money(up, item['currency'], rate, dual=True)}",
             ]
         )
     if len(lines) == 4:
@@ -1170,7 +1253,7 @@ def send_briefing_email() -> None:
     msg["To"] = recipient
     msg["Subject"] = f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}"
     msg.set_content(body)
-    msg.add_alternative(build_briefing_html(), subtype="html")
+    msg.add_alternative(build_briefing_html(body), subtype="html")
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -1179,7 +1262,7 @@ def send_briefing_email() -> None:
     config_url = os.environ.get("PORTFOLIO_CONFIG_URL")
     if config_url:
         try:
-            requests.post(
+            response = requests.post(
                 config_url,
                 json={
                     "action": "saveLastBriefing",
@@ -1188,5 +1271,6 @@ def send_briefing_email() -> None:
                 },
                 timeout=20,
             )
+            response.raise_for_status()
         except Exception:
-            pass
+            print("[briefing] warning: failed to save last briefing to PORTFOLIO_CONFIG_URL")

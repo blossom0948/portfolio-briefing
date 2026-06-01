@@ -74,8 +74,8 @@
 
       <section id="view-dashboard" class="view active">
         <div class="metrics">
-          <div><span>원화 평가액</span><strong id="totalKrw">-</strong></div>
-          <div><span>달러 평가액</span><strong id="totalUsd">-</strong></div>
+          <div><span>총 평가액</span><strong id="totalKrw">-</strong></div>
+          <div><span>달러 자산</span><strong id="totalUsd">-</strong></div>
           <div><span>켜진 모으기</span><strong id="activePlans">-</strong></div>
           <div><span>업데이트</span><strong id="updatedAt">-</strong></div>
         </div>
@@ -115,7 +115,12 @@
               <label>티커<input name="symbol" placeholder="예: AAPL"></label>
               <label>시장<select name="market"><option value="US">미국</option><option value="KR">한국</option></select></label>
               <label>현재 수량<input name="quantity" type="number" step="0.000001" value="0"></label>
-              <label>평균 단가<input name="average_price" type="number" step="0.01" value="0"></label>
+              <label>평균 단가
+                <div class="inline-control">
+                  <input name="average_price" type="number" step="0.01" value="0">
+                  <select name="average_price_currency"><option value="KRW">원화 KRW</option><option value="USD" selected>달러 USD</option></select>
+                </div>
+              </label>
               <button class="primary" type="submit">종목 추가</button>
             </form>
           </section>
@@ -127,7 +132,12 @@
               <label>종목<select name="holding_id" id="tradeHolding"></select></label>
               <label>구분<select name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
               <label>수량<input name="quantity" type="number" step="0.000001" placeholder="소수점 가능"></label>
-              <label>가격<input name="price" type="number" step="0.01" placeholder="1주 가격"></label>
+              <label>가격
+                <div class="inline-control">
+                  <input name="price" type="number" step="0.01" placeholder="1주 가격">
+                  <select name="price_currency"><option value="KRW">원화 KRW</option><option value="USD" selected>달러 USD</option></select>
+                </div>
+              </label>
               <label>날짜<input name="date" type="date"></label>
               <label>메모<input name="memo" placeholder="예: 첫 매수"></label>
               <button class="primary" type="submit">반영하기</button>
@@ -187,6 +197,11 @@
               <div id="newsImpact" class="impact-meter"></div>
             </section>
             <section class="panel">
+              <p class="eyebrow">Risk Radar</p>
+              <h2>오늘 위험 레이더</h2>
+              <div id="riskRadar" class="risk-radar"></div>
+            </section>
+            <section class="panel">
               <p class="eyebrow">Benchmark</p>
               <h2>벤치마크 비교</h2>
               <div id="benchmarkList" class="action-list"></div>
@@ -206,6 +221,7 @@
             <div class="simulator-grid">
               <label>종목<select id="simHolding"></select></label>
               <label>매수 금액<input id="simAmount" type="number" step="1000" value="10000"></label>
+              <label>기준 통화<select id="simCurrency"><option value="KRW">원화 KRW</option><option value="USD">달러 USD</option></select></label>
               <label>주기<select id="simFrequency"><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
               <label>기간<input id="simMonths" type="number" min="1" max="120" value="12"></label>
               <label>연 기대수익률<input id="simReturn" type="number" step="0.1" value="6"></label>

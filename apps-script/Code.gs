@@ -16,6 +16,7 @@ function defaultPortfolio() {
         market: "KR",
         quantity: 0,
         average_price: 0,
+        average_price_currency: "KRW",
         plan: {
           enabled: false,
           frequency: "weekly",
@@ -33,12 +34,13 @@ function defaultPortfolio() {
         market: "US",
         quantity: 0,
         average_price: 0,
+        average_price_currency: "USD",
         plan: {
           enabled: false,
           frequency: "weekly",
           weekday: "MO",
-          amount: 10,
-          currency: "USD",
+          amount: 10000,
+          currency: "KRW",
           memo: ""
         },
         transactions: []
@@ -50,12 +52,13 @@ function defaultPortfolio() {
         market: "US",
         quantity: 0,
         average_price: 0,
+        average_price_currency: "USD",
         plan: {
           enabled: false,
           frequency: "weekly",
           weekday: "MO",
-          amount: 10,
-          currency: "USD",
+          amount: 10000,
+          currency: "KRW",
           memo: ""
         },
         transactions: []

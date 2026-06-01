@@ -499,7 +499,7 @@ textarea {
 
 .simulator-grid {
   display: grid;
-  grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1.2fr repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
@@ -587,26 +587,100 @@ pre.answer {
 
 .holding-form-card {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
   align-items: end;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
+  padding: 16px;
+}
+
+.holding-form-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.holding-form-title strong,
+.holding-form-title span {
+  display: block;
+}
+
+.holding-form-title span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .holding-form-card .wide-row {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: .6fr .7fr .7fr .7fr 1fr auto;
-  gap: 10px;
+  grid-template-columns: .55fr .7fr .7fr 1.1fr 1.2fr;
+  gap: 12px;
   align-items: end;
+}
+
+.inline-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 8px;
+}
+
+.ghost-danger {
+  border-color: rgba(255, 69, 58, 0.28);
+  background: rgba(255, 69, 58, 0.10);
+  color: #ffb4ad;
+}
+
+.risk-radar {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.risk-radar article {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--soft);
+}
+
+.risk-radar b,
+.risk-radar span {
+  display: block;
+}
+
+.risk-radar span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.risk-gauge {
+  --risk: 0;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--red) calc(var(--risk) * 1%), rgba(255,255,255,0.10) 0);
+  box-shadow: inset 0 0 0 7px rgba(18,18,20,0.92);
+}
+
+.risk-gauge strong {
+  font-size: 14px;
 }
 
 @media (max-width: 920px) {
   .holding-form-card,
-  .holding-form-card .wide-row { grid-template-columns: 1fr; }
+  .holding-form-card .wide-row,
+  .inline-control { grid-template-columns: 1fr; }
 }
 
 .landing-page {
@@ -934,7 +1008,7 @@ button:hover {
 
 body {
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Noto Sans KR", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "SF Pro Display", "SF Pro Text", "Malgun Gothic", "Noto Sans KR", sans-serif;
   background:
     radial-gradient(circle at 16% 10%, rgba(48, 209, 88, 0.10), transparent 32%),
     radial-gradient(circle at 86% 6%, rgba(10, 132, 255, 0.12), transparent 34%),
@@ -957,6 +1031,7 @@ body {
 .event-list article,
 .journal-list article,
 .scenario-grid article,
+.risk-radar article,
 .chip-list span,
 .impact-score {
   position: relative;
@@ -988,6 +1063,7 @@ body {
 .event-list article::before,
 .journal-list article::before,
 .scenario-grid article::before,
+.risk-radar article::before,
 .chip-list span::before,
 .impact-score::before {
   content: "";
@@ -1165,6 +1241,7 @@ select option {
 .event-list article,
 .journal-list article,
 .scenario-grid article,
+.risk-radar article,
 .chip-list span {
   background: rgba(44,44,46,0.78);
   border-color: rgba(235,235,245,0.16);

@@ -19,6 +19,7 @@ export function defaultPortfolio() {
         market: "KR",
         quantity: 0,
         average_price: 0,
+        average_price_currency: "KRW",
         plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "매주 월요일 1만원 모으기" },
         transactions: [],
       },
@@ -29,7 +30,8 @@ export function defaultPortfolio() {
         market: "US",
         quantity: 0,
         average_price: 0,
-        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10, currency: "USD", memo: "" },
+        average_price_currency: "USD",
+        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" },
         transactions: [],
       },
       {
@@ -39,7 +41,8 @@ export function defaultPortfolio() {
         market: "US",
         quantity: 0,
         average_price: 0,
-        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10, currency: "USD", memo: "" },
+        average_price_currency: "USD",
+        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" },
         transactions: [],
       },
     ],
@@ -73,8 +76,42 @@ export async function savePortfolio(env, portfolio) {
 export async function fetchLastBriefing(env) {
   const url = configUrl(env) + (configUrl(env).includes("?") ? "&" : "?") + "brief=1";
   const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) return { text: "아직 저장된 브리핑이 없습니다.", updatedAt: "" };
-  return response.json();
+  if (!response.ok) return buildLiveBriefing(env, "저장된 브리핑을 읽지 못해 현재 데이터로 즉시 생성했습니다.");
+  const data = await response.json();
+  const text = String(data.text || "");
+  if (!text || text.includes("아직 저장된 브리핑이 없습니다")) {
+    return buildLiveBriefing(env, "저장된 브리핑이 없어 현재 데이터로 즉시 생성했습니다.");
+  }
+  return data;
+}
+
+function normalizeCurrency(value, fallback = "KRW") {
+  const currency = String(value || fallback).toUpperCase();
+  return ["KRW", "USD"].includes(currency) ? currency : fallback;
+}
+
+async function usdKrwRate(env = {}) {
+  const fallback = Number(env.USD_KRW_FALLBACK || 1350);
+  try {
+    const price = await yahooPrice("KRW=X");
+    return Number(price.close || fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function toQuoteAmount(amount, fromCurrency, quoteCurrency, rate) {
+  const source = normalizeCurrency(fromCurrency, quoteCurrency);
+  const target = normalizeCurrency(quoteCurrency, source);
+  const value = Number(amount || 0);
+  if (source === target) return value;
+  if (source === "KRW" && target === "USD") return rate ? value / rate : 0;
+  if (source === "USD" && target === "KRW") return value * rate;
+  return value;
+}
+
+function toKrwAmount(amount, currency, rate) {
+  return toQuoteAmount(amount, currency, "KRW", rate);
 }
 
 async function yahooPrice(symbol) {
@@ -143,6 +180,7 @@ export async function buildHistory(env, { symbol = "QQQM", market = "US", range 
 export async function buildSnapshot(env) {
   const portfolio = await fetchPortfolio(env);
   const holdings = [];
+  const rate = await usdKrwRate(env);
   for (const holding of portfolio.holdings || []) {
     const yahooSymbol = holding.market === "KR" && /^\d+$/.test(holding.symbol) ? `${holding.symbol}.KS` : holding.symbol;
     try {
@@ -150,14 +188,21 @@ export async function buildSnapshot(env) {
       const close = Number(price.close || 0);
       const previous = Number(price.previous || close);
       const quantity = Number(holding.quantity || 0);
-      const averagePrice = Number(holding.average_price || 0);
       const currency = holding.market === "KR" ? "KRW" : "USD";
+      const averagePriceCurrency = holding.market === "KR" ? "KRW" : normalizeCurrency(holding.average_price_currency, currency);
+      const averagePrice = toQuoteAmount(Number(holding.average_price || 0), averagePriceCurrency, currency, rate);
       const value = close * quantity;
       const cost = averagePrice * quantity;
-      const plan = holding.plan || {};
+      const plan = {
+        ...(holding.plan || {}),
+        currency: holding.market === "KR" ? "KRW" : normalizeCurrency(holding.plan?.currency, currency),
+      };
+      const planQuoteAmount = toQuoteAmount(Number(plan.amount || 0), plan.currency, currency, rate);
       holdings.push({
         ...holding,
+        plan,
         currency,
+        usd_krw_rate: rate,
         close,
         date: price.date,
         change: close - previous,
@@ -166,29 +211,65 @@ export async function buildSnapshot(env) {
         cost,
         profit: cost ? value - cost : 0,
         profit_pct: cost ? ((value / cost - 1) * 100) : null,
-        plan_estimated_shares: plan.amount && close ? Number(plan.amount) / close : 0,
+        average_price_currency: averagePriceCurrency,
+        average_price_quote: averagePrice,
+        plan_quote_amount: planQuoteAmount,
+        plan_estimated_shares: planQuoteAmount && close ? planQuoteAmount / close : 0,
+        krw_close: toKrwAmount(close, currency, rate),
+        krw_change: toKrwAmount(close - previous, currency, rate),
+        krw_value: toKrwAmount(value, currency, rate),
+        krw_cost: toKrwAmount(cost, currency, rate),
+        krw_profit: toKrwAmount(cost ? value - cost : 0, currency, rate),
       });
     } catch (error) {
       holdings.push({ ...holding, error: error.message });
     }
   }
+  const totalKrwConverted = holdings.reduce((sum, item) => sum + Number(item.krw_value || 0), 0);
   return {
     settings: portfolio.settings || {},
     holdings,
+    usd_krw_rate: rate,
     totals: {
       KRW: holdings.filter((item) => item.currency === "KRW").reduce((sum, item) => sum + (item.value || 0), 0),
       USD: holdings.filter((item) => item.currency === "USD").reduce((sum, item) => sum + (item.value || 0), 0),
+      KRW_CONVERTED: totalKrwConverted,
     },
     active_plans: holdings.filter((item) => item.plan?.enabled).length,
     updated_at: new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
   };
 }
 
-export function formatMoney(value, currency) {
+export function formatMoney(value, currency, rate = 0, dual = false) {
   const amount = Number(value || 0);
-  return currency === "KRW"
-    ? `${Math.round(amount).toLocaleString("ko-KR")}원`
-    : `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (currency === "KRW") return `${Math.round(amount).toLocaleString("ko-KR")}원`;
+  const usd = `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return dual && rate ? `${usd} (약 ${Math.round(amount * rate).toLocaleString("ko-KR")}원)` : usd;
+}
+
+export async function buildLiveBriefing(env, reason = "현재 데이터로 즉시 생성했습니다.") {
+  const snapshot = await buildSnapshot(env);
+  const lines = [
+    `[포트폴리오 브리핑] ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
+    reason,
+    "",
+    "가격 요약",
+  ];
+  for (const item of snapshot.holdings || []) {
+    if (item.error) {
+      lines.push(`- ${item.name || item.symbol}: 조회 실패 (${item.error})`);
+      continue;
+    }
+    const sign = Number(item.change || 0) > 0 ? "+" : Number(item.change || 0) < 0 ? "-" : "";
+    const change = item.change_pct === null || item.change_pct === undefined ? "등락 정보 없음" : `${sign}${Math.abs(Number(item.change_pct)).toFixed(2)}%`;
+    lines.push(`- ${item.name}: ${formatMoney(item.close, item.currency, snapshot.usd_krw_rate, true)} (${change})`);
+  }
+  lines.push("");
+  lines.push("그래서 오늘 해야 할 것");
+  lines.push("- 웹에 저장된 메일 브리핑이 아직 없어서 실시간 가격 중심으로 보여드립니다.");
+  lines.push("- GitHub Actions가 다음에 실행되면 메일 본문도 이 화면에 저장되어 표시됩니다.");
+  lines.push("- 주식 모으기 설정을 바꾸면 다음 브리핑부터 반영됩니다.");
+  return { text: lines.join("\n"), updatedAt: new Date().toISOString(), generated: true };
 }
 
 export function localProjection(question, snapshot, prefix = "") {
@@ -201,17 +282,26 @@ export function localProjection(question, snapshot, prefix = "") {
   lines.push("1년 적립 시뮬레이션");
   for (const item of list) {
     let amount = Number(item.plan?.amount || 0);
-    if (question.includes("만원") && item.currency === "KRW") amount = 10000;
-    if (question.includes("10만원") && item.currency === "KRW") amount = 100000;
+    let planCurrency = normalizeCurrency(item.plan?.currency, item.currency || "KRW");
+    const rate = Number(snapshot.usd_krw_rate || item.usd_krw_rate || 1350);
+    if (question.includes("만원")) {
+      amount = 10000;
+      planCurrency = "KRW";
+    }
+    if (question.includes("10만원")) {
+      amount = 100000;
+      planCurrency = "KRW";
+    }
     if (!amount) continue;
     const periods = question.includes("매월") || item.plan?.frequency === "monthly" ? 12 : 52;
     const total = amount * periods;
-    const shares = item.close ? total / item.close : 0;
+    const totalQuote = toQuoteAmount(total, planCurrency, item.currency || "KRW", rate);
+    const shares = item.close ? totalQuote / item.close : 0;
     lines.push(
-      `- ${item.name}: ${formatMoney(amount, item.currency)}씩 ${periods}회`,
-      `  총 투입금: ${formatMoney(total, item.currency)}`,
+      `- ${item.name}: ${formatMoney(amount, planCurrency, rate, true)}씩 ${periods}회`,
+      `  총 투입금: ${formatMoney(total, planCurrency, rate, true)}`,
       `  현재가 기준 예상 수량: ${shares.toFixed(6)}주`,
-      `  시나리오: -20% ${formatMoney(total * 0.8, item.currency)} / 0% ${formatMoney(total, item.currency)} / +20% ${formatMoney(total * 1.2, item.currency)}`
+      `  시나리오: -20% ${formatMoney(totalQuote * 0.8, item.currency, rate, true)} / 0% ${formatMoney(totalQuote, item.currency, rate, true)} / +20% ${formatMoney(totalQuote * 1.2, item.currency, rate, true)}`
     );
   }
   if (lines.length <= (prefix ? 4 : 3)) {

@@ -6,10 +6,16 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 
-function money(value, currency) {
+function fxRate() {
+  return Number(state.snapshot?.usd_krw_rate || 0);
+}
+
+function money(value, currency, options = {}) {
   if (value === null || value === undefined) return "-";
   if (currency === "KRW") return `${Math.round(value).toLocaleString("ko-KR")}원`;
-  return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const usd = `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (options.dual === false || !fxRate()) return usd;
+  return `${usd} · 약 ${Math.round(Number(value) * fxRate()).toLocaleString("ko-KR")}원`;
 }
 
 function number(value) {
@@ -74,12 +80,19 @@ function planText(item) {
   return `${freq} ${weekday}요일 ${money(plan.amount, plan.currency)} 모으기`;
 }
 
+function currencyOptions(selected, market = "US") {
+  if (market === "KR") return `<option value="KRW" selected>원화 KRW</option>`;
+  return ["KRW", "USD"].map((currency) => (
+    `<option value="${currency}" ${selected === currency ? "selected" : ""}>${currency === "KRW" ? "원화 KRW" : "달러 USD"}</option>`
+  )).join("");
+}
+
 function renderSnapshot(snapshot) {
   state.snapshot = snapshot;
-  $("#totalKrw").textContent = money(snapshot.totals.KRW, "KRW");
+  $("#totalKrw").textContent = money(snapshot.totals.KRW_CONVERTED || snapshot.totals.KRW, "KRW");
   $("#totalUsd").textContent = money(snapshot.totals.USD, "USD");
   $("#activePlans").textContent = `${snapshot.active_plans}개`;
-  $("#updatedAt").textContent = snapshot.updated_at;
+  $("#updatedAt").textContent = snapshot.usd_krw_rate ? `환율 ${Math.round(snapshot.usd_krw_rate).toLocaleString("ko-KR")}원` : snapshot.updated_at;
   $("#holdingCards").innerHTML = snapshot.holdings.map((item) => {
     if (item.error) {
       return `<article class="holding-card warning"><strong>${item.name}</strong><span>${item.error}</span></article>`;
@@ -102,7 +115,7 @@ function renderSnapshot(snapshot) {
         </div>
         <dl>
           <div><dt>수량</dt><dd>${number(item.quantity)}</dd></div>
-          <div><dt>평단</dt><dd>${item.average_price ? money(item.average_price, item.currency) : "-"}</dd></div>
+          <div><dt>평단</dt><dd>${item.average_price ? money(item.average_price, item.average_price_currency || item.currency) : "-"}</dd></div>
           <div><dt>평가액</dt><dd>${item.value ? money(item.value, item.currency) : "-"}</dd></div>
           <div><dt>손익</dt><dd>${profit}</dd></div>
         </dl>
@@ -142,7 +155,10 @@ function renderPlanList(portfolio) {
           </select>
         </label>
         <label>금액
-          <input name="amount" type="number" step="0.01" value="${plan.amount || 0}">
+          <div class="inline-control">
+            <input name="amount" type="number" step="0.01" value="${plan.amount || 0}">
+            <select name="currency">${currencyOptions(plan.currency || (item.market === "KR" ? "KRW" : "KRW"), item.market)}</select>
+          </div>
         </label>
         <label>메모
           <input name="memo" value="${plan.memo || ""}" placeholder="예: 월요일 1만원">
@@ -253,25 +269,18 @@ function analyzeHealth() {
     reasons.push("보유 수량이 0이라 실제 비중 계산이 어렵습니다.");
   }
 
-  const buckets = {};
-  valued.forEach((item) => {
-    const key = item.currency || item.market || "기타";
-    buckets[key] = buckets[key] || [];
-    buckets[key].push(item);
-  });
-
-  Object.entries(buckets).forEach(([currency, items]) => {
-    const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-    const top = items.reduce((best, item) => Number(item.value || 0) > Number(best.value || 0) ? item : best, items[0]);
-    const weight = total ? Number(top.value || 0) / total : 0;
-    if (weight > 0.7 && items.length > 1) {
+  const totalKrw = valued.reduce((sum, item) => sum + Number(item.krw_value || item.value || 0), 0);
+  if (totalKrw) {
+    const top = valued.reduce((best, item) => Number(item.krw_value || item.value || 0) > Number(best.krw_value || best.value || 0) ? item : best, valued[0]);
+    const weight = Number(top.krw_value || top.value || 0) / totalKrw;
+    if (weight > 0.7 && valued.length > 1) {
       score -= 16;
-      reasons.push(`${top.name}의 ${currency} 내 비중이 ${pct(weight)}로 높습니다.`);
-    } else if (weight > 0.55 && items.length > 1) {
+      reasons.push(`${top.name}의 전체 원화 환산 비중이 ${pct(weight)}로 높습니다.`);
+    } else if (weight > 0.55 && valued.length > 1) {
       score -= 8;
-      reasons.push(`${currency} 자산 안에서 ${top.name} 비중을 조금만 점검하세요.`);
+      reasons.push(`${top.name} 비중을 조금만 점검하세요. 원화 환산 기준입니다.`);
     }
-  });
+  }
 
   const missingCost = holdings.filter((item) => Number(item.quantity || 0) > 0 && !Number(item.average_price || 0));
   if (missingCost.length) {
@@ -324,33 +333,24 @@ function renderHealth() {
 
 function renderRebalance() {
   const holdings = currentHoldings().filter((item) => Number(item.value || 0) > 0);
-  const buckets = {};
-  holdings.forEach((item) => {
-    const key = item.currency || "기타";
-    buckets[key] = buckets[key] || [];
-    buckets[key].push(item);
-  });
-
   const actions = [];
-  Object.entries(buckets).forEach(([currency, items]) => {
-    const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-    if (items.length === 1) {
-      actions.push({ title: `${currency} 자산`, body: `${items[0].name}만 있으니 리밸런싱보다 보유 이유와 추가 매수 기준을 정하세요.` });
-      return;
-    }
-    const target = 1 / items.length;
-    items.forEach((item) => {
-      const weight = Number(item.value || 0) / total;
+  const total = holdings.reduce((sum, item) => sum + Number(item.krw_value || item.value || 0), 0);
+  if (holdings.length === 1) {
+    actions.push({ title: "원화 통합 비중", body: `${holdings[0].name}만 있으니 리밸런싱보다 보유 이유와 추가 매수 기준을 정하세요.` });
+  } else if (total) {
+    const target = 1 / holdings.length;
+    holdings.forEach((item) => {
+      const weight = Number(item.krw_value || item.value || 0) / total;
       const gap = weight - target;
       if (Math.abs(gap) < 0.1) {
-        actions.push({ title: item.name, body: `현재 비중 ${pct(weight)}로 목표 ${pct(target)}와 큰 차이가 없습니다.` });
+        actions.push({ title: item.name, body: `원화 환산 비중 ${pct(weight)}로 균등 목표 ${pct(target)}와 큰 차이가 없습니다.` });
       } else if (gap > 0) {
-        actions.push({ title: item.name, body: `현재 비중 ${pct(weight)}입니다. 새 적립금은 다른 종목에 먼저 배정하는 편이 균형에 좋습니다.` });
+        actions.push({ title: item.name, body: `원화 환산 비중 ${pct(weight)}입니다. 새 적립금은 다른 종목에 먼저 배정하는 편이 균형에 좋습니다.` });
       } else {
-        actions.push({ title: item.name, body: `현재 비중 ${pct(weight)}입니다. 다음 적립 때 우선순위를 높이면 균형이 좋아집니다.` });
+        actions.push({ title: item.name, body: `원화 환산 비중 ${pct(weight)}입니다. 다음 적립 때 우선순위를 높이면 균형이 좋아집니다.` });
       }
     });
-  });
+  }
 
   $("#rebalanceList").innerHTML = (actions.length ? actions : [{ title: "대기", body: "보유 수량과 평단을 입력하면 추천이 더 정확해집니다." }])
     .map((item) => `<article><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span></article>`).join("");
@@ -365,6 +365,30 @@ function renderNewsImpact() {
     </div>
     <p>긍정 키워드 ${impact.positiveCount}개, 주의 키워드 ${impact.negativeCount}개를 감지했습니다. 숫자가 낮으면 오늘은 매수보다 확인이 먼저입니다.</p>
   `;
+}
+
+function renderRiskRadar() {
+  const holdings = currentHoldings();
+  const impact = analyzeNewsImpact();
+  const totalKrw = holdings.reduce((sum, item) => sum + Number(item.krw_value || item.value || 0), 0);
+  const top = totalKrw
+    ? holdings.reduce((best, item) => Number(item.krw_value || item.value || 0) > Number(best.krw_value || best.value || 0) ? item : best, holdings[0])
+    : null;
+  const concentration = top && totalKrw ? Number(top.krw_value || top.value || 0) / totalKrw : 0;
+  const biggestMove = holdings
+    .filter((item) => Number.isFinite(Number(item.change_pct)))
+    .sort((a, b) => Math.abs(Number(b.change_pct || 0)) - Math.abs(Number(a.change_pct || 0)))[0];
+  const risks = [
+    { label: "비중 집중", score: clamp(Math.round(concentration * 100), 0, 100), body: top ? `${top.name} ${pct(concentration)} · 원화 환산 기준` : "보유 금액 입력 필요" },
+    { label: "가격 변동", score: clamp(Math.round(Math.abs(Number(biggestMove?.change_pct || 0)) * 12), 0, 100), body: biggestMove ? `${biggestMove.name} ${Number(biggestMove.change_pct || 0).toFixed(2)}%` : "변동 데이터 없음" },
+    { label: "뉴스 톤", score: 100 - impact.score, body: `${impact.label} · 주의 키워드 ${impact.negativeCount}개` },
+  ];
+  $("#riskRadar").innerHTML = risks.map((risk) => `
+    <article>
+      <div class="risk-gauge" style="--risk:${risk.score}"><strong>${risk.score}</strong></div>
+      <div><b>${escapeHtml(risk.label)}</b><span>${escapeHtml(risk.body)}</span></div>
+    </article>
+  `).join("");
 }
 
 function formatBenchmarkChange(change) {
@@ -384,18 +408,12 @@ async function renderBenchmark() {
   el.dataset.ready = "false";
   el.innerHTML = "<article><strong>비교 중</strong><span>최근 6개월 벤치마크를 불러오고 있습니다.</span></article>";
 
-  const totalByCurrency = {};
-  const weightedToday = {};
+  const totalKrw = holdings.reduce((sum, item) => sum + Number(item.krw_value || item.value || 0), 0);
+  let weightedToday = 0;
   holdings.forEach((item) => {
-    const currency = item.currency || "기타";
-    const value = Number(item.value || 0);
-    totalByCurrency[currency] = (totalByCurrency[currency] || 0) + value;
-  });
-  holdings.forEach((item) => {
-    const currency = item.currency || "기타";
-    const value = Number(item.value || 0);
-    const weight = totalByCurrency[currency] ? value / totalByCurrency[currency] : 0;
-    weightedToday[currency] = (weightedToday[currency] || 0) + weight * Number(item.change_pct || 0);
+    const value = Number(item.krw_value || item.value || 0);
+    const weight = totalKrw ? value / totalKrw : 0;
+    weightedToday += weight * Number(item.change_pct || 0);
   });
 
   const benchmarks = [
@@ -410,7 +428,7 @@ async function renderBenchmark() {
   }));
 
   const rows = [
-    ...Object.entries(weightedToday).map(([currency, change]) => ({ title: `내 ${currency} 오늘`, body: `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` })),
+    { title: "내 포트폴리오 오늘", body: `${weightedToday >= 0 ? "+" : ""}${weightedToday.toFixed(2)}% · 원화 환산 비중` },
     ...results.map((result) => result.status === "fulfilled"
       ? { title: result.value.name, body: formatBenchmarkChange(result.value.change) }
       : { title: "벤치마크", body: "일시적으로 불러오지 못했습니다." }),
@@ -431,6 +449,8 @@ function renderEventsAndAlerts() {
   const events = [
     { tag: "매일", title: "아침 브리핑 메일", body: `${portfolio.settings?.send_time || "07:00"} · ${portfolio.settings?.recipient || "받을 메일 미설정"}` },
     ...activePlans.map((item) => ({ tag: item.plan.frequency === "monthly" ? "매월" : "매주", title: `${item.name} 주식 모으기`, body: `${nextWeekdayLabel(item.plan.weekday)}요일 · ${money(item.plan.amount, item.plan.currency)}` })),
+    { tag: "매월", title: "미국 CPI·고용 지표", body: "QQQM과 VOO는 금리 기대에 민감해서 발표 주간에는 변동성을 더 크게 봅니다." },
+    { tag: "FOMC", title: "미국 금리 결정 주간", body: "금리 인하/동결 기대가 바뀌면 달러 자산과 성장주가 같이 흔들릴 수 있습니다." },
     { tag: "분기", title: "미국 ETF 분배금 점검", body: "3·6·9·12월에는 QQQM/VOO 분배금 재투자 여부를 확인하세요." },
     { tag: "분기", title: "삼성전자 실적·배당 공시", body: "실적 발표 전후로 뉴스 영향 점수와 가격 변동을 같이 보세요." },
   ];
@@ -465,21 +485,24 @@ function runWhatIf() {
   const holdings = currentHoldings();
   const item = holdings[Number($("#simHolding")?.value || 0)];
   const amount = Number($("#simAmount")?.value || 0);
+  const inputCurrency = $("#simCurrency")?.value || "KRW";
   const months = clamp(Number($("#simMonths")?.value || 12), 1, 120);
   const frequency = $("#simFrequency")?.value || "weekly";
   const annualReturn = Number($("#simReturn")?.value || 0) / 100;
   const periods = frequency === "weekly" ? Math.round((months / 12) * 52) : months;
   const invested = amount * periods;
-  const expected = invested * (1 + annualReturn * (months / 12));
-  const shares = item?.close ? invested / Number(item.close) : 0;
   const currency = item?.currency || (item?.market === "KR" ? "KRW" : "USD");
+  const rate = fxRate() || 1350;
+  const investedQuote = currency === inputCurrency ? invested : (inputCurrency === "KRW" ? invested / rate : invested * rate);
+  const expected = investedQuote * (1 + annualReturn * (months / 12));
+  const shares = item?.close ? investedQuote / Number(item.close) : 0;
   const scenarios = [
-    { title: "보수적", value: invested * 0.8, body: "가격이 20% 낮아지는 경우" },
-    { title: "기준", value: invested, body: "가격이 그대로인 경우" },
+    { title: "보수적", value: investedQuote * 0.8, body: "가격이 20% 낮아지는 경우" },
+    { title: "기준", value: investedQuote, body: "가격이 그대로인 경우" },
     { title: "기대", value: expected, body: `연 ${Math.round(annualReturn * 1000) / 10}% 가정` },
   ];
   $("#whatIfResult").innerHTML = `
-    <article><span>총 투자금</span><strong>${money(invested, currency)}</strong><small>${periods}회 매수 · 예상 ${shares.toFixed(6)}주</small></article>
+    <article><span>총 투자금</span><strong>${money(invested, inputCurrency)}</strong><small>${periods}회 매수 · 현재가 기준 예상 ${shares.toFixed(6)}주</small></article>
     ${scenarios.map((scenario) => `<article><span>${scenario.title}</span><strong>${money(scenario.value, currency)}</strong><small>${scenario.body}</small></article>`).join("")}
   `;
 }
@@ -564,6 +587,7 @@ function switchProPanel(name) {
 function renderPro() {
   if (!$("#view-pro")) return;
   renderHealth();
+  renderRiskRadar();
   renderRebalance();
   renderNewsImpact();
   renderEventsAndAlerts();
@@ -725,7 +749,7 @@ document.querySelectorAll(".pro-tab").forEach((button) => {
 });
 
 $("#runWhatIfBtn")?.addEventListener("click", runWhatIf);
-["#simHolding", "#simAmount", "#simFrequency", "#simMonths", "#simReturn"].forEach((selector) => {
+["#simHolding", "#simAmount", "#simCurrency", "#simFrequency", "#simMonths", "#simReturn"].forEach((selector) => {
   $(selector)?.addEventListener("input", runWhatIf);
   $(selector)?.addEventListener("change", runWhatIf);
 });
