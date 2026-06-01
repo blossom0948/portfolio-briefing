@@ -97,6 +97,49 @@ async function yahooPrice(symbol) {
   };
 }
 
+export async function yahooHistory(symbol, range = "6mo") {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`;
+  const response = await fetch(url, { headers: { "user-agent": "Briefolio/1.0" } });
+  if (!response.ok) throw new Error(`${symbol} 차트 조회 실패`);
+  const data = await response.json();
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error(`${symbol} 차트 데이터 없음`);
+  const quote = result.indicators?.quote?.[0] || {};
+  const closes = quote.close || [];
+  const timestamps = result.timestamp || [];
+  const points = timestamps
+    .map((timestamp, index) => ({ date: new Date(timestamp * 1000).toISOString().slice(0, 10), close: closes[index] }))
+    .filter((point) => typeof point.close === "number");
+  if (!points.length) throw new Error(`${symbol} 차트 데이터 없음`);
+  const start = points[0].close;
+  const end = points.at(-1).close;
+  return {
+    symbol,
+    range,
+    points,
+    start,
+    end,
+    change_pct: start ? ((end / start - 1) * 100) : null,
+  };
+}
+
+export async function buildHistory(env, { symbol = "QQQM", market = "US", range = "6mo" } = {}) {
+  const portfolio = await fetchPortfolio(env).catch(() => defaultPortfolio());
+  const holding = (portfolio.holdings || []).find((item) => item.symbol === symbol || item.id === symbol) || {};
+  const rawSymbol = holding.symbol || symbol;
+  const rawMarket = holding.market || market;
+  const yahooSymbol = rawMarket === "KR" && /^\d+$/.test(rawSymbol) ? `${rawSymbol}.KS` : rawSymbol;
+  const history = await yahooHistory(yahooSymbol, range);
+  return {
+    ...history,
+    symbol: rawSymbol,
+    market: rawMarket,
+    yahoo_symbol: yahooSymbol,
+    name: holding.name || rawSymbol,
+    currency: rawMarket === "KR" ? "KRW" : "USD",
+  };
+}
+
 export async function buildSnapshot(env) {
   const portfolio = await fetchPortfolio(env);
   const holdings = [];

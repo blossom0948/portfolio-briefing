@@ -64,6 +64,14 @@ def news():
     return jsonify(core.get_news())
 
 
+@app.get("/api/history")
+def history():
+    symbol = request.args.get("symbol", "QQQM")
+    market = request.args.get("market", "US")
+    period = request.args.get("period") or request.args.get("range") or "6mo"
+    return jsonify(core.get_price_history(symbol, market, period))
+
+
 @app.get("/api/briefing")
 def briefing():
     return jsonify({"text": core.build_briefing_text()})

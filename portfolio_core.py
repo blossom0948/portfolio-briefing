@@ -320,6 +320,31 @@ def get_price(holding: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_price_history(symbol: str, market: str = "US", period: str = "6mo") -> dict[str, Any]:
+    yahoo_symbol = f"{symbol}.KS" if market == "KR" and symbol.isdigit() else symbol
+    hist = yf.Ticker(yahoo_symbol).history(period=period, interval="1d", auto_adjust=False)
+    hist = hist.dropna(subset=["Close"])
+    if hist.empty:
+        raise RuntimeError(f"{symbol} 차트 데이터를 찾지 못했습니다.")
+    points = [
+        {"date": index.strftime("%Y-%m-%d"), "close": round(float(row["Close"]), 4)}
+        for index, row in hist.iterrows()
+    ]
+    first = points[0]["close"]
+    last = points[-1]["close"]
+    return {
+        "symbol": symbol,
+        "market": market,
+        "yahoo_symbol": yahoo_symbol,
+        "currency": "KRW" if market == "KR" else "USD",
+        "period": period,
+        "points": points,
+        "start": first,
+        "end": last,
+        "change_pct": round((last / first - 1) * 100, 2) if first else None,
+    }
+
+
 def get_portfolio_snapshot() -> dict[str, Any]:
     portfolio = load_portfolio()
     rows = []
