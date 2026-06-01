@@ -6,12 +6,14 @@ import os
 import smtplib
 import ssl
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 from xml.etree import ElementTree
+from zoneinfo import ZoneInfo
 
 import requests
 import yfinance as yf
@@ -22,6 +24,7 @@ from pykrx import stock
 ROOT = Path(__file__).resolve().parent
 DATA_PATH = Path(os.environ.get("PORTFOLIO_DATA_PATH", ROOT / "data" / "portfolio.json"))
 ENV_PATH = ROOT / ".env"
+KST = ZoneInfo("Asia/Seoul")
 
 
 @dataclass
@@ -34,6 +37,45 @@ class Price:
     currency: str
     change: float | None
     change_pct: float | None
+
+
+def now_kst() -> datetime:
+    return datetime.now(KST)
+
+
+def parse_news_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc).astimezone(KST)
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return datetime.fromtimestamp(int(text), tz=timezone.utc).astimezone(KST)
+
+    try:
+        parsed = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(KST)
+
+
+def is_today_kst(value: Any, today: Any | None = None) -> tuple[bool, datetime | None]:
+    published_at = parse_news_datetime(value)
+    if published_at is None:
+        return False, None
+    target = today or now_kst().date()
+    return published_at.date() == target, published_at
 
 
 def load_env() -> None:
@@ -164,7 +206,7 @@ def update_settings(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _latest_kr_price(symbol: str, name: str) -> Price:
-    today = datetime.now()
+    today = now_kst()
     found: tuple[Any, Any] | None = None
     previous: Any | None = None
     for offset in range(30):
@@ -263,7 +305,7 @@ def get_portfolio_snapshot() -> dict[str, Any]:
             "USD": round(total_value_usd, 2),
         },
         "active_plans": len(active_plans),
-        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "updated_at": now_kst().strftime("%Y-%m-%d %H:%M"),
     }
 
 
@@ -288,7 +330,7 @@ def apply_transaction(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             new_qty = current_qty + quantity
             new_avg = ((current_qty * current_avg) + (quantity * price)) / new_qty
         transaction = {
-            "date": str(payload.get("date") or datetime.now().strftime("%Y-%m-%d")),
+            "date": str(payload.get("date") or now_kst().strftime("%Y-%m-%d")),
             "side": side,
             "quantity": quantity,
             "price": price,
@@ -327,17 +369,41 @@ def update_plan(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     raise KeyError("holding not found")
 
 
-def google_news(query: str, limit: int = 4) -> list[dict[str, str]]:
-    url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=ko&gl=KR&ceid=KR:ko"
+def google_news(
+    query: str,
+    limit: int = 4,
+    *,
+    kind: str = "국내",
+    hl: str = "ko",
+    gl: str = "KR",
+    ceid: str = "KR:ko",
+    translate: bool = False,
+) -> list[dict[str, str]]:
+    today = now_kst().date()
+    url = f"https://news.google.com/rss/search?q={quote_plus(f'{query} when:1d')}&hl={hl}&gl={gl}&ceid={ceid}"
     response = requests.get(url, timeout=20)
     response.raise_for_status()
     root = ElementTree.fromstring(response.content)
     items = []
-    for item in root.findall("./channel/item")[:limit]:
+    for item in root.findall("./channel/item"):
+        is_today, published_at = is_today_kst(item.findtext("pubDate"), today)
+        if not is_today or published_at is None:
+            continue
         title = item.findtext("title") or ""
         link = item.findtext("link") or ""
         source = item.findtext("source") or ""
-        items.append({"title": title, "title_ko": title, "link": link, "source": source, "kind": "국내"})
+        items.append(
+            {
+                "title": title,
+                "title_ko": translate_title(title) if translate else title,
+                "link": link,
+                "source": source,
+                "kind": kind,
+                "published_at": published_at.strftime("%Y-%m-%d %H:%M"),
+            }
+        )
+        if len(items) >= limit:
+            break
     return items
 
 
@@ -352,13 +418,42 @@ def translate_title(title: str) -> str:
         return title
 
 
+def is_relevant_overseas_news(item: dict[str, str]) -> bool:
+    title = f"{item.get('title', '')} {item.get('title_ko', '')}".lower()
+    terms = ["qqqm", "voo", "vanguard", "invesco", "nasdaq", "s&p 500", "sp 500", "s&p"]
+    return any(term in title for term in terms)
+
+
 def yf_news(symbol: str, limit: int = 3) -> list[dict[str, str]]:
+    today = now_kst().date()
     items = []
-    for item in yf.Ticker(symbol).news[:limit]:
-        content = item.get("content", {})
+    for item in yf.Ticker(symbol).news[: max(limit * 8, 20)]:
+        content = item.get("content") or {}
+        publish_candidates = [
+            item.get("providerPublishTime"),
+            item.get("pubDate"),
+            item.get("published_at"),
+            content.get("providerPublishTime"),
+            content.get("pubDate"),
+            content.get("displayTime"),
+        ]
+        published_at = None
+        for candidate in publish_candidates:
+            is_today, parsed = is_today_kst(candidate, today)
+            if parsed is not None:
+                published_at = parsed
+            if is_today:
+                break
+        else:
+            continue
+        if published_at is None:
+            continue
         title = item.get("title") or content.get("title") or ""
-        link = item.get("link") or content.get("canonicalUrl", {}).get("url") or ""
-        source = item.get("publisher") or content.get("provider", {}).get("displayName") or ""
+        canonical_url = content.get("canonicalUrl") or {}
+        click_url = content.get("clickThroughUrl") or {}
+        provider = content.get("provider") or {}
+        link = item.get("link") or canonical_url.get("url") or click_url.get("url") or ""
+        source = item.get("publisher") or provider.get("displayName") or ""
         if title and link:
             items.append(
                 {
@@ -368,8 +463,11 @@ def yf_news(symbol: str, limit: int = 3) -> list[dict[str, str]]:
                     "source": source,
                     "kind": "해외",
                     "symbol": symbol,
+                    "published_at": published_at.strftime("%Y-%m-%d %H:%M"),
                 }
             )
+        if len(items) >= limit:
+            break
     return items
 
 
@@ -377,13 +475,68 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
     portfolio = load_portfolio()
     holdings = [normalize_holding(item) for item in portfolio.get("holdings", [])]
     domestic_query = " OR ".join(item["name"] for item in holdings if item["market"] == "KR") or "삼성전자"
-    domestic = google_news(f"{domestic_query} 주가 HBM 자사주", limit_each)
+    domestic = google_news(f"{domestic_query} 주가 HBM 자사주", limit_each, kind="국내")
+    domestic_seen_links = {item.get("link") for item in domestic}
+    domestic_fallback_queries = [
+        f"{domestic_query} 주가",
+        f"{domestic_query} 반도체 HBM",
+        f"{domestic_query} 자사주",
+    ]
+    for query in domestic_fallback_queries:
+        if len(domestic) >= limit_each:
+            break
+        for item in google_news(query, limit_each, kind="국내"):
+            link = item.get("link")
+            if link in domestic_seen_links:
+                continue
+            domestic_seen_links.add(link)
+            domestic.append(item)
+            if len(domestic) >= limit_each:
+                break
     overseas = []
+    seen_links = set()
     for holding in holdings:
         if holding["market"] == "US":
-            overseas.extend(yf_news(holding["symbol"], 2))
-        elif holding["market"] == "KR":
-            overseas.extend(yf_news(f"{holding['symbol']}.KS", 1))
+            candidates = yf_news(holding["symbol"], 2)
+        else:
+            candidates = []
+        for item in candidates:
+            if not is_relevant_overseas_news(item):
+                continue
+            link = item.get("link")
+            if link in seen_links:
+                continue
+            seen_links.add(link)
+            overseas.append(item)
+        if len(overseas) >= limit_each:
+            break
+    us_symbols = [item["symbol"] for item in holdings if item["market"] == "US"] or ["QQQM", "VOO"]
+    fallback_queries = [
+        *(f"{symbol} ETF" for symbol in us_symbols),
+        "Nasdaq 100 ETF market",
+        "S&P 500 ETF market",
+    ]
+    for query in fallback_queries:
+        if len(overseas) >= limit_each:
+            break
+        for item in google_news(
+            query,
+            limit_each,
+            kind="해외",
+            hl="en-US",
+            gl="US",
+            ceid="US:en",
+            translate=True,
+        ):
+            if not is_relevant_overseas_news(item):
+                continue
+            link = item.get("link")
+            if link in seen_links:
+                continue
+            seen_links.add(link)
+            overseas.append(item)
+            if len(overseas) >= limit_each:
+                break
     return {"domestic": domestic[:limit_each], "overseas": overseas[:limit_each]}
 
 
@@ -427,7 +580,7 @@ def build_briefing_text() -> str:
     snapshot = get_portfolio_snapshot()
     news = get_news(3)
     lines = [
-        f"[포트폴리오 브리핑] {datetime.now().strftime('%Y-%m-%d')}",
+        f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}",
         "",
         "가격 요약",
     ]
@@ -437,9 +590,14 @@ def build_briefing_text() -> str:
         else:
             lines.append(f"- {item['name']}: {format_change(item)}")
     lines.extend(["", "오늘의 주요 뉴스들"])
-    for item in news["domestic"] + news["overseas"]:
-        lines.append(f"- {item['title_ko']} ({item['source']})")
-        lines.append(f"  {item['link']}")
+    today_news = news["domestic"] + news["overseas"]
+    if today_news:
+        for item in today_news:
+            published = f", {item['published_at']} KST" if item.get("published_at") else ""
+            lines.append(f"- [{item['kind']}] {item['title_ko']} ({item['source']}{published})")
+            lines.append(f"  {item['link']}")
+    else:
+        lines.append("- 오늘자(KST 기준)로 확인된 관련 뉴스가 없습니다. 오래된 기사는 제외했습니다.")
     lines.extend(["", "그래서 오늘 해야 할 것"])
     lines.extend(f"- {note}" for note in action_notes(snapshot))
     return "\n".join(lines)
@@ -606,7 +764,7 @@ def send_briefing_email() -> None:
     msg = EmailMessage()
     msg["From"] = os.environ["GMAIL_USER"]
     msg["To"] = recipient
-    msg["Subject"] = f"[포트폴리오 브리핑] {datetime.now().strftime('%Y-%m-%d')}"
+    msg["Subject"] = f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}"
     msg.set_content(body)
     msg.add_alternative(build_briefing_html(), subtype="html")
 
@@ -622,7 +780,7 @@ def send_briefing_email() -> None:
                 json={
                     "action": "saveLastBriefing",
                     "text": body,
-                    "updatedAt": datetime.now().isoformat(),
+                    "updatedAt": now_kst().isoformat(),
                 },
                 timeout=20,
             )

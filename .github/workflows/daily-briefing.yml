@@ -2,8 +2,9 @@ name: Daily portfolio briefing
 
 on:
   schedule:
-    # 07:00 Asia/Seoul is 22:00 UTC on the previous day.
-    - cron: "0 22 * * *"
+    # GitHub Actions can delay jobs at the top of the hour.
+    # 06:45 Asia/Seoul is 21:45 UTC on the previous day.
+    - cron: "45 21 * * *"
   workflow_dispatch:
 
 jobs:
