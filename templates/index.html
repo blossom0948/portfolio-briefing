@@ -106,6 +106,27 @@
       </section>
 
       <section id="view-manage" class="view">
+        <section class="panel discover-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">발견</p>
+              <h2>전체 주식 보기</h2>
+            </div>
+            <div class="discover-search">
+              <input id="discoverSearch" placeholder="종목명, 티커 검색">
+              <button id="discoverSearchBtn" class="primary">검색</button>
+            </div>
+          </div>
+          <div class="discover-tabs" aria-label="종목 카테고리">
+            <button class="discover-tab active" data-discover-category="us">🇺🇸 해외주식</button>
+            <button class="discover-tab" data-discover-category="kr">🇰🇷 국내주식</button>
+            <button class="discover-tab" data-discover-category="etf">ETF</button>
+            <button class="discover-tab" data-discover-category="bond">채권</button>
+          </div>
+          <div id="discoverResults" class="discover-list"></div>
+          <div id="discoverAction" class="discover-action" hidden></div>
+        </section>
+
         <div class="two-col">
           <section class="panel">
             <p class="eyebrow">주식 설정</p>

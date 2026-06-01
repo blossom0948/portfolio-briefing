@@ -677,10 +677,138 @@ pre.answer {
   font-size: 14px;
 }
 
+.discover-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.discover-search {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.discover-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.discover-tab {
+  min-height: 58px;
+  justify-content: center;
+  border-radius: 20px;
+  font-size: 15px;
+}
+
+.discover-tab.active {
+  border-color: rgba(48,209,88,0.82);
+  background: rgba(48,209,88,0.18);
+  color: #eaffef;
+}
+
+.discover-list {
+  display: grid;
+  gap: 8px;
+}
+
+.discover-item {
+  display: grid;
+  grid-template-columns: 34px 52px minmax(0, 1.35fr) minmax(120px, .8fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(44,44,46,0.62);
+}
+
+.discover-rank {
+  color: rgba(245,245,247,0.76);
+  font-size: 18px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.discover-logo {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(100,210,255,0.24), rgba(48,209,88,0.12));
+  color: #ffffff;
+  font-weight: 900;
+  box-shadow: inset 1px 1px 2px rgba(255,255,255,0.26), inset -1px -1px 2px rgba(0,0,0,0.24);
+}
+
+.discover-copy strong,
+.discover-copy span,
+.discover-price b,
+.discover-price span {
+  display: block;
+}
+
+.discover-copy span,
+.discover-price span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.discover-price {
+  text-align: right;
+}
+
+.discover-action[hidden] {
+  display: none;
+}
+
+.discover-sheet {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(28,28,30,0.78);
+  box-shadow:
+    inset 1px 1px 2px rgba(255,255,255,0.16),
+    inset -1px -1px 2px rgba(0,0,0,0.32),
+    0 20px 60px rgba(0,0,0,0.28);
+}
+
+.discover-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.discover-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 @media (max-width: 920px) {
   .holding-form-card,
   .holding-form-card .wide-row,
-  .inline-control { grid-template-columns: 1fr; }
+  .inline-control,
+  .discover-search,
+  .discover-tabs,
+  .discover-form { grid-template-columns: 1fr; }
+
+  .discover-item {
+    grid-template-columns: 28px 46px minmax(0, 1fr);
+  }
+
+  .discover-price {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+
+  .discover-item button {
+    grid-column: 1 / -1;
+  }
 }
 
 .landing-page {
@@ -1032,6 +1160,8 @@ body {
 .journal-list article,
 .scenario-grid article,
 .risk-radar article,
+.discover-item,
+.discover-sheet,
 .chip-list span,
 .impact-score {
   position: relative;
@@ -1064,6 +1194,8 @@ body {
 .journal-list article::before,
 .scenario-grid article::before,
 .risk-radar article::before,
+.discover-item::before,
+.discover-sheet::before,
 .chip-list span::before,
 .impact-score::before {
   content: "";
@@ -1242,6 +1374,8 @@ select option {
 .journal-list article,
 .scenario-grid article,
 .risk-radar article,
+.discover-item,
+.discover-sheet,
 .chip-list span {
   background: rgba(44,44,46,0.78);
   border-color: rgba(235,235,245,0.16);

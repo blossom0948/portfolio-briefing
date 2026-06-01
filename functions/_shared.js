@@ -114,6 +114,102 @@ function toKrwAmount(amount, currency, rate) {
   return toQuoteAmount(amount, currency, "KRW", rate);
 }
 
+const DISCOVERY_PRESETS = {
+  us: [
+    ["NVDA", "NVIDIA"], ["AAPL", "Apple"], ["MSFT", "Microsoft"], ["AMZN", "Amazon"],
+    ["GOOGL", "Alphabet"], ["META", "Meta Platforms"], ["TSLA", "Tesla"], ["AVGO", "Broadcom"],
+    ["NFLX", "Netflix"], ["PLTR", "Palantir"], ["SOFI", "SoFi Technologies"], ["RKLB", "Rocket Lab"],
+  ].map(([symbol, name]) => ({ symbol, name, market: "US", category: "해외주식" })),
+  kr: [
+    ["005930", "삼성전자"], ["000660", "SK하이닉스"], ["373220", "LG에너지솔루션"], ["207940", "삼성바이오로직스"],
+    ["005380", "현대차"], ["000270", "기아"], ["035420", "NAVER"], ["035720", "카카오"],
+    ["068270", "셀트리온"], ["005490", "POSCO홀딩스"], ["105560", "KB금융"], ["055550", "신한지주"],
+  ].map(([symbol, name]) => ({ symbol, name, market: "KR", category: "국내주식" })),
+  etf: [
+    ["VOO", "Vanguard S&P 500 ETF", "US"], ["QQQM", "Invesco NASDAQ 100 ETF", "US"], ["SPY", "SPDR S&P 500 ETF", "US"],
+    ["QQQ", "Invesco QQQ Trust", "US"], ["VTI", "Vanguard Total Stock Market ETF", "US"], ["SCHD", "Schwab U.S. Dividend Equity ETF", "US"],
+    ["SOXX", "iShares Semiconductor ETF", "US"], ["SOXL", "Direxion Daily Semiconductor Bull 3X", "US"],
+    ["069500", "KODEX 200", "KR"], ["360750", "TIGER 미국S&P500", "KR"], ["133690", "TIGER 미국나스닥100", "KR"],
+  ].map(([symbol, name, market]) => ({ symbol, name, market, category: "ETF" })),
+  bond: [
+    ["TLT", "iShares 20+ Year Treasury Bond ETF", "US"], ["IEF", "iShares 7-10 Year Treasury Bond ETF", "US"],
+    ["SHY", "iShares 1-3 Year Treasury Bond ETF", "US"], ["BND", "Vanguard Total Bond Market ETF", "US"],
+    ["AGG", "iShares Core U.S. Aggregate Bond ETF", "US"], ["TMF", "Direxion Daily 20+ Year Treasury Bull 3X", "US"],
+    ["148070", "KOSEF 국고채10년", "KR"], ["305080", "TIGER 미국채10년선물", "KR"],
+  ].map(([symbol, name, market]) => ({ symbol, name, market, category: "채권" })),
+};
+
+async function yahooSearchAssets(query, limit = 10) {
+  if (!String(query || "").trim()) return [];
+  try {
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=${limit}&newsCount=0&enableFuzzyQuery=true`;
+    const response = await fetch(url, { headers: { "user-agent": "Briefolio/1.0" } });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.quotes || [])
+      .filter((quote) => ["EQUITY", "ETF", "MUTUALFUND"].includes(String(quote.quoteType || "").toUpperCase()))
+      .map((quote) => {
+        const rawSymbol = String(quote.symbol || "").toUpperCase();
+        const market = rawSymbol.endsWith(".KS") || rawSymbol.endsWith(".KQ") || ["KSC", "KOE"].includes(String(quote.exchange || "").toUpperCase()) ? "KR" : "US";
+        const symbol = rawSymbol.replace(".KS", "").replace(".KQ", "");
+        return {
+          symbol,
+          name: quote.shortname || quote.longname || symbol,
+          market,
+          category: String(quote.quoteType || "").toUpperCase() === "ETF" ? "ETF" : (market === "KR" ? "국내주식" : "해외주식"),
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+async function quoteDiscoveryAsset(asset, rate) {
+  const yahooSymbol = asset.market === "KR" && /^\d+$/.test(asset.symbol) ? `${asset.symbol}.KS` : asset.symbol;
+  try {
+    const price = await yahooPrice(yahooSymbol);
+    const close = Number(price.close || 0);
+    const previous = Number(price.previous || close);
+    const currency = asset.market === "KR" ? "KRW" : "USD";
+    return {
+      ...asset,
+      currency,
+      close,
+      date: price.date,
+      change: close - previous,
+      change_pct: previous ? ((close / previous - 1) * 100) : null,
+      krw_close: toKrwAmount(close, currency, rate),
+    };
+  } catch (error) {
+    return { ...asset, currency: asset.market === "KR" ? "KRW" : "USD", error: error.message };
+  }
+}
+
+export async function buildDiscovery(env, { category = "us", query = "", limit = 12 } = {}) {
+  const activeCategory = DISCOVERY_PRESETS[category] ? category : "us";
+  const searchText = String(query || "").trim();
+  let base = searchText ? await yahooSearchAssets(searchText, limit * 2) : DISCOVERY_PRESETS[activeCategory];
+  if (searchText) {
+    const lower = searchText.toLowerCase();
+    const presetMatches = Object.values(DISCOVERY_PRESETS).flat().filter((item) => (
+      item.symbol.toLowerCase().includes(lower) || item.name.toLowerCase().includes(lower)
+    ));
+    base = [...presetMatches, ...base];
+  }
+  const seen = new Set();
+  const unique = [];
+  for (const item of base) {
+    const key = `${item.market}:${item.symbol}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+    if (unique.length >= limit) break;
+  }
+  const rate = await usdKrwRate(env);
+  const items = await Promise.all(unique.map((item) => quoteDiscoveryAsset(item, rate)));
+  return { category: activeCategory, query: searchText, usd_krw_rate: rate, items };
+}
+
 async function yahooPrice(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=10d&interval=1d`;
   const response = await fetch(url, { headers: { "user-agent": "Briefolio/1.0" } });

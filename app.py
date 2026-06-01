@@ -59,9 +59,26 @@ def snapshot():
     return jsonify(core.get_portfolio_snapshot())
 
 
+@app.route("/api/config", methods=["GET", "POST"])
+def config_alias():
+    if request.method == "GET":
+        return jsonify(core.load_portfolio())
+    portfolio = request.json or {}
+    core.save_portfolio(portfolio)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/news")
 def news():
     return jsonify(core.get_news())
+
+
+@app.get("/api/discover")
+def discover():
+    category = request.args.get("category", "us")
+    query = request.args.get("q", "")
+    limit = int(request.args.get("limit", "12") or 12)
+    return jsonify(core.discover_assets(category, query, limit))
 
 
 @app.get("/api/history")

@@ -333,6 +333,151 @@ def _latest_us_price(symbol: str, name: str) -> Price:
     )
 
 
+DISCOVERY_PRESETS: dict[str, list[dict[str, str]]] = {
+    "us": [
+        {"symbol": "NVDA", "name": "NVIDIA", "market": "US", "category": "해외주식"},
+        {"symbol": "AAPL", "name": "Apple", "market": "US", "category": "해외주식"},
+        {"symbol": "MSFT", "name": "Microsoft", "market": "US", "category": "해외주식"},
+        {"symbol": "AMZN", "name": "Amazon", "market": "US", "category": "해외주식"},
+        {"symbol": "GOOGL", "name": "Alphabet", "market": "US", "category": "해외주식"},
+        {"symbol": "META", "name": "Meta Platforms", "market": "US", "category": "해외주식"},
+        {"symbol": "TSLA", "name": "Tesla", "market": "US", "category": "해외주식"},
+        {"symbol": "AVGO", "name": "Broadcom", "market": "US", "category": "해외주식"},
+        {"symbol": "NFLX", "name": "Netflix", "market": "US", "category": "해외주식"},
+        {"symbol": "PLTR", "name": "Palantir", "market": "US", "category": "해외주식"},
+        {"symbol": "SOFI", "name": "SoFi Technologies", "market": "US", "category": "해외주식"},
+        {"symbol": "RKLB", "name": "Rocket Lab", "market": "US", "category": "해외주식"},
+    ],
+    "kr": [
+        {"symbol": "005930", "name": "삼성전자", "market": "KR", "category": "국내주식"},
+        {"symbol": "000660", "name": "SK하이닉스", "market": "KR", "category": "국내주식"},
+        {"symbol": "373220", "name": "LG에너지솔루션", "market": "KR", "category": "국내주식"},
+        {"symbol": "207940", "name": "삼성바이오로직스", "market": "KR", "category": "국내주식"},
+        {"symbol": "005380", "name": "현대차", "market": "KR", "category": "국내주식"},
+        {"symbol": "000270", "name": "기아", "market": "KR", "category": "국내주식"},
+        {"symbol": "035420", "name": "NAVER", "market": "KR", "category": "국내주식"},
+        {"symbol": "035720", "name": "카카오", "market": "KR", "category": "국내주식"},
+        {"symbol": "068270", "name": "셀트리온", "market": "KR", "category": "국내주식"},
+        {"symbol": "005490", "name": "POSCO홀딩스", "market": "KR", "category": "국내주식"},
+        {"symbol": "105560", "name": "KB금융", "market": "KR", "category": "국내주식"},
+        {"symbol": "055550", "name": "신한지주", "market": "KR", "category": "국내주식"},
+    ],
+    "etf": [
+        {"symbol": "VOO", "name": "Vanguard S&P 500 ETF", "market": "US", "category": "ETF"},
+        {"symbol": "QQQM", "name": "Invesco NASDAQ 100 ETF", "market": "US", "category": "ETF"},
+        {"symbol": "SPY", "name": "SPDR S&P 500 ETF", "market": "US", "category": "ETF"},
+        {"symbol": "QQQ", "name": "Invesco QQQ Trust", "market": "US", "category": "ETF"},
+        {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "market": "US", "category": "ETF"},
+        {"symbol": "SCHD", "name": "Schwab U.S. Dividend Equity ETF", "market": "US", "category": "ETF"},
+        {"symbol": "SOXX", "name": "iShares Semiconductor ETF", "market": "US", "category": "ETF"},
+        {"symbol": "SOXL", "name": "Direxion Daily Semiconductor Bull 3X", "market": "US", "category": "ETF"},
+        {"symbol": "069500", "name": "KODEX 200", "market": "KR", "category": "ETF"},
+        {"symbol": "360750", "name": "TIGER 미국S&P500", "market": "KR", "category": "ETF"},
+        {"symbol": "133690", "name": "TIGER 미국나스닥100", "market": "KR", "category": "ETF"},
+    ],
+    "bond": [
+        {"symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF", "market": "US", "category": "채권"},
+        {"symbol": "IEF", "name": "iShares 7-10 Year Treasury Bond ETF", "market": "US", "category": "채권"},
+        {"symbol": "SHY", "name": "iShares 1-3 Year Treasury Bond ETF", "market": "US", "category": "채권"},
+        {"symbol": "BND", "name": "Vanguard Total Bond Market ETF", "market": "US", "category": "채권"},
+        {"symbol": "AGG", "name": "iShares Core U.S. Aggregate Bond ETF", "market": "US", "category": "채권"},
+        {"symbol": "TMF", "name": "Direxion Daily 20+ Year Treasury Bull 3X", "market": "US", "category": "채권"},
+        {"symbol": "148070", "name": "KOSEF 국고채10년", "market": "KR", "category": "채권"},
+        {"symbol": "305080", "name": "TIGER 미국채10년선물", "market": "KR", "category": "채권"},
+    ],
+}
+
+
+def yahoo_symbol_for(symbol: str, market: str) -> str:
+    return f"{symbol}.KS" if market == "KR" and symbol.isdigit() else symbol
+
+
+def _quote_asset(asset: dict[str, str], usd_krw_rate: float) -> dict[str, Any]:
+    market = asset.get("market", "US")
+    symbol = asset["symbol"]
+    try:
+        price = _latest_kr_price(symbol, asset["name"]) if market == "KR" else _latest_us_price(symbol, asset["name"])
+        return {
+            **asset,
+            "currency": price.currency,
+            "close": price.close,
+            "date": price.date,
+            "change": price.change,
+            "change_pct": price.change_pct,
+            "krw_close": round(to_krw_amount(price.close, price.currency, usd_krw_rate), 2),
+        }
+    except Exception as exc:
+        return {**asset, "currency": "KRW" if market == "KR" else "USD", "error": str(exc)}
+
+
+def search_yahoo_assets(query: str, limit: int = 10) -> list[dict[str, str]]:
+    if not query.strip():
+        return []
+    try:
+        response = requests.get(
+            "https://query2.finance.yahoo.com/v1/finance/search",
+            params={"q": query, "quotesCount": limit, "newsCount": 0, "enableFuzzyQuery": True},
+            headers=REQUEST_HEADERS,
+            timeout=12,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        return []
+
+    rows = []
+    for quote in data.get("quotes", []):
+        symbol = str(quote.get("symbol") or "").upper()
+        quote_type = str(quote.get("quoteType") or "").upper()
+        exchange = str(quote.get("exchange") or "").upper()
+        if not symbol or quote_type not in {"EQUITY", "ETF", "MUTUALFUND"}:
+            continue
+        market = "KR" if symbol.endswith(".KS") or symbol.endswith(".KQ") or exchange in {"KSC", "KOE"} else "US"
+        clean_symbol = symbol.replace(".KS", "").replace(".KQ", "")
+        rows.append(
+            {
+                "symbol": clean_symbol,
+                "name": quote.get("shortname") or quote.get("longname") or clean_symbol,
+                "market": market,
+                "category": "ETF" if quote_type == "ETF" else ("국내주식" if market == "KR" else "해외주식"),
+            }
+        )
+    return rows
+
+
+def discover_assets(category: str = "us", query: str = "", limit: int = 12) -> dict[str, Any]:
+    category = category if category in DISCOVERY_PRESETS else "us"
+    query = query.strip()
+    base = search_yahoo_assets(query, limit * 2) if query else DISCOVERY_PRESETS[category]
+    if query:
+        preset_matches = [
+            item
+            for group in DISCOVERY_PRESETS.values()
+            for item in group
+            if query.lower() in item["name"].lower() or query.lower() in item["symbol"].lower()
+        ]
+        base = preset_matches + base
+
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for item in base:
+        key = (item["market"], item["symbol"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+        if len(unique) >= limit:
+            break
+
+    rate = get_usd_krw_rate()
+    return {
+        "category": category,
+        "query": query,
+        "usd_krw_rate": rate,
+        "items": [_quote_asset(item, rate) for item in unique],
+    }
+
+
 def get_price(holding: dict[str, Any], usd_krw_rate: float | None = None) -> dict[str, Any]:
     item = normalize_holding(holding)
     usd_krw_rate = usd_krw_rate or get_usd_krw_rate()

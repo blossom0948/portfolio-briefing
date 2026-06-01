@@ -6,6 +6,7 @@ const defaults = {
 let portfolio = structuredClone(defaults);
 let snapshot = null;
 let lastBriefing = { text: "" };
+const discoverState = { category: "us", items: [], selected: null };
 const $ = (selector) => document.querySelector(selector);
 const days = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
 
@@ -74,6 +75,170 @@ function currencyOptions(selected, market = "US") {
   return ["KRW", "USD"].map((currency) => (
     `<option value="${currency}" ${selected === currency ? "selected" : ""}>${currency === "KRW" ? "원화 KRW" : "달러 USD"}</option>`
   )).join("");
+}
+
+function convertAmount(amount, fromCurrency, toCurrency) {
+  const value = Number(amount || 0);
+  if (fromCurrency === toCurrency) return value;
+  const rate = fxRate() || 1350;
+  if (fromCurrency === "KRW" && toCurrency === "USD") return value / rate;
+  if (fromCurrency === "USD" && toCurrency === "KRW") return value * rate;
+  return value;
+}
+
+function marketLabel(asset) {
+  return asset.market === "KR" ? "국내" : "해외";
+}
+
+function renderDiscoverResults() {
+  const el = $("#discoverResults");
+  if (!el) return;
+  if (!discoverState.items.length) {
+    el.innerHTML = "<p class='muted'>표시할 종목이 없습니다. 종목명이나 티커로 검색해보세요.</p>";
+    return;
+  }
+  el.innerHTML = discoverState.items.map((asset, index) => {
+    const direction = Number(asset.change || 0) >= 0 ? "positive" : "negative";
+    const change = asset.change_pct === null || asset.change_pct === undefined
+      ? "-"
+      : `${Number(asset.change_pct) >= 0 ? "+" : ""}${Number(asset.change_pct).toFixed(2)}%`;
+    const price = asset.error ? "조회 실패" : money(asset.close, asset.currency);
+    return `
+      <article class="discover-item">
+        <div class="discover-rank">${index + 1}</div>
+        <div class="discover-logo">${escapeHtml(asset.symbol.slice(0, 2))}</div>
+        <div class="discover-copy">
+          <strong>${escapeHtml(asset.name)}</strong>
+          <span>${escapeHtml(asset.symbol)} · ${marketLabel(asset)} · ${escapeHtml(asset.category || "")}</span>
+        </div>
+        <div class="discover-price">
+          <b>${price}</b>
+          <span class="${direction}">${asset.error || change}</span>
+        </div>
+        <button data-discover-index="${index}" type="button">구매하기</button>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadDiscovery(category = discoverState.category) {
+  discoverState.category = category;
+  document.querySelectorAll(".discover-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.discoverCategory === category);
+  });
+  const query = $("#discoverSearch")?.value.trim() || "";
+  if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목을 불러오는 중입니다...</p>";
+  const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
+  discoverState.items = data.items || [];
+  renderDiscoverResults();
+}
+
+function openDiscoverAction(asset) {
+  discoverState.selected = asset;
+  const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
+  const planCurrency = asset.market === "KR" ? "KRW" : "KRW";
+  const price = asset.close ? Number(asset.close).toFixed(quoteCurrency === "KRW" ? 0 : 2) : "";
+  const el = $("#discoverAction");
+  el.hidden = false;
+  el.innerHTML = `
+    <article class="discover-sheet">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(asset.category || "Stock")}</p>
+          <h2>${escapeHtml(asset.name)}</h2>
+          <p>${escapeHtml(asset.symbol)} · ${marketLabel(asset)} · ${asset.error ? "가격 조회 실패" : money(asset.close, asset.currency)}</p>
+        </div>
+        <button id="discoverCloseBtn" type="button">닫기</button>
+      </div>
+      <div class="discover-form">
+        <label>구매 수량<input id="discoverQty" type="number" step="0.000001" min="0" value="0"></label>
+        <label>1주 가격
+          <div class="inline-control">
+            <input id="discoverPrice" type="number" step="0.01" value="${price}">
+            <select id="discoverPriceCurrency">${currencyOptions(quoteCurrency, asset.market)}</select>
+          </div>
+        </label>
+        <label class="toggle"><input id="discoverPlanEnabled" type="checkbox"><span>주식 모으기 켜기</span></label>
+        <label>모으기 금액
+          <div class="inline-control">
+            <input id="discoverPlanAmount" type="number" step="0.01" value="10000">
+            <select id="discoverPlanCurrency">${currencyOptions(planCurrency, asset.market)}</select>
+          </div>
+        </label>
+        <label>주기<select id="discoverPlanFrequency"><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
+        <label>요일<select id="discoverPlanWeekday">${Object.entries(days).map(([k, v]) => `<option value="${k}" ${k === "MO" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      </div>
+      <div class="discover-actions">
+        <button id="discoverSaveBtn" class="primary" type="button">내 주식에 반영</button>
+      </div>
+    </article>
+  `;
+}
+
+async function saveDiscoverSelection() {
+  const asset = discoverState.selected;
+  if (!asset) return;
+  syncFromForms();
+  const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
+  const quantity = Number($("#discoverQty")?.value || 0);
+  const price = Number($("#discoverPrice")?.value || 0);
+  const priceCurrency = $("#discoverPriceCurrency")?.value || quoteCurrency;
+  const planEnabled = Boolean($("#discoverPlanEnabled")?.checked);
+  const planAmount = Number($("#discoverPlanAmount")?.value || 0);
+  const planCurrency = $("#discoverPlanCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
+  let item = portfolio.holdings.find((holding) => holding.symbol === asset.symbol && holding.market === asset.market);
+  if (!item) {
+    item = {
+      id: `${asset.market.toLowerCase()}-${asset.symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      name: asset.name,
+      symbol: asset.symbol,
+      market: asset.market,
+      quantity: 0,
+      average_price: 0,
+      average_price_currency: quoteCurrency,
+      plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 0, currency: asset.market === "KR" ? "KRW" : "KRW", memo: "" },
+      transactions: [],
+    };
+    portfolio.holdings.push(item);
+  }
+  if (quantity > 0 && price > 0) {
+    const currentQty = Number(item.quantity || 0);
+    const currentAvgQuote = convertAmount(Number(item.average_price || 0), item.average_price_currency || quoteCurrency, quoteCurrency);
+    const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
+    const nextQty = currentQty + quantity;
+    item.quantity = Number(nextQty.toFixed(8));
+    item.average_price = Number((((currentQty * currentAvgQuote) + (quantity * priceQuote)) / nextQty).toFixed(4));
+    item.average_price_currency = quoteCurrency;
+    item.transactions = item.transactions || [];
+    item.transactions.unshift({
+      date: new Date().toISOString().slice(0, 10),
+      side: "buy",
+      quantity,
+      price,
+      price_currency: priceCurrency,
+      memo: "발견 화면에서 추가",
+    });
+    item.transactions = item.transactions.slice(0, 20);
+  }
+  if (planEnabled || planAmount > 0) {
+    item.plan = {
+      ...(item.plan || {}),
+      enabled: planEnabled,
+      frequency: $("#discoverPlanFrequency")?.value || "weekly",
+      weekday: $("#discoverPlanWeekday")?.value || "MO",
+      amount: planAmount,
+      currency: asset.market === "KR" ? "KRW" : planCurrency,
+      memo: item.plan?.memo || "",
+    };
+  }
+  await requestJson("/api/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(portfolio),
+  });
+  $("#discoverAction").hidden = true;
+  await loadAll();
+  toast(`${asset.name}을 내 주식에 반영했습니다.`);
 }
 
 function syncFromForms() {
@@ -598,6 +763,9 @@ async function loadAll() {
   renderForms();
   renderBriefing();
   renderPro();
+  loadDiscovery().catch(() => {
+    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
+  });
   toast("최신 설정을 불러왔습니다.");
 }
 
@@ -628,6 +796,30 @@ $("#holdingForms").addEventListener("click", (event) => {
   syncFromForms();
   portfolio.holdings.splice(Number(event.target.dataset.remove), 1);
   renderForms();
+});
+document.querySelectorAll(".discover-tab").forEach((button) => {
+  button.addEventListener("click", () => loadDiscovery(button.dataset.discoverCategory).catch((error) => toast(`종목 불러오기 실패: ${error.message}`)));
+});
+$("#discoverSearchBtn")?.addEventListener("click", () => loadDiscovery().catch((error) => toast(`검색 실패: ${error.message}`)));
+$("#discoverSearch")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadDiscovery().catch((error) => toast(`검색 실패: ${error.message}`));
+  }
+});
+$("#discoverResults")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discover-index]");
+  if (!button) return;
+  openDiscoverAction(discoverState.items[Number(button.dataset.discoverIndex)]);
+});
+$("#discoverAction")?.addEventListener("click", (event) => {
+  if (event.target.id === "discoverCloseBtn") {
+    $("#discoverAction").hidden = true;
+    return;
+  }
+  if (event.target.id === "discoverSaveBtn") {
+    saveDiscoverSelection().catch((error) => toast(`반영 실패: ${error.message}`));
+  }
 });
 $("#exampleQuestionBtn").addEventListener("click", () => {
   $("#aiQuestion").value = "삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?";
