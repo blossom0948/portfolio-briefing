@@ -97,8 +97,91 @@ function convertAmount(amount, fromCurrency, toCurrency) {
   return value;
 }
 
+function todayKst() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function marketLabel(asset) {
   return asset.market === "KR" ? "국내" : "해외";
+}
+
+function findSnapshotItem(item) {
+  return (state.snapshot?.holdings || []).find((row) => row.id === item.id || (row.symbol === item.symbol && row.market === item.market));
+}
+
+function planExecutionPreview(item) {
+  const plan = item.plan || {};
+  const snap = findSnapshotItem(item);
+  const quoteCurrency = item.market === "KR" ? "KRW" : "USD";
+  const close = Number(snap?.close || 0);
+  const planAmount = Number(plan.amount || 0);
+  const planCurrency = item.market === "KR" ? "KRW" : (plan.currency || "KRW");
+  const quoteAmount = convertAmount(planAmount, planCurrency, quoteCurrency);
+  const quantity = close ? quoteAmount / close : 0;
+  return { close, quantity, quoteAmount, quoteCurrency, planAmount, planCurrency, snap };
+}
+
+function planExecutionLabel(item) {
+  const plan = item.plan || {};
+  if (!plan.enabled || !Number(plan.amount || 0)) return "모으기 금액을 켜면 실행할 수 있습니다.";
+  const preview = planExecutionPreview(item);
+  if (!preview.close) return "현재가를 불러온 뒤 실행할 수 있습니다.";
+  return `현재가 기준 예상 ${preview.quantity.toFixed(6)}주 · ${money(preview.planAmount, preview.planCurrency)}`;
+}
+
+function planExecutedToday(item) {
+  return (item.plan || {}).last_executed_date === todayKst();
+}
+
+function planCanExecute(item) {
+  const preview = planExecutionPreview(item);
+  return Boolean(item.plan?.enabled && Number(item.plan?.amount || 0) && preview.close && preview.quantity && !planExecutedToday(item));
+}
+
+async function executePlan(itemId) {
+  const item = state.portfolio?.holdings.find((holding) => holding.id === itemId);
+  if (!item) return;
+  if (planExecutedToday(item)) {
+    toast("오늘은 이미 이 모으기를 반영했습니다.");
+    return;
+  }
+  const preview = planExecutionPreview(item);
+  if (!item.plan?.enabled || !preview.planAmount || !preview.close || !preview.quantity) {
+    toast("모으기 금액과 현재가를 먼저 확인해주세요.");
+    return;
+  }
+  const currentQty = Number(item.quantity || 0);
+  const currentAvgQuote = convertAmount(Number(item.average_price || 0), item.average_price_currency || preview.quoteCurrency, preview.quoteCurrency);
+  const nextQty = currentQty + preview.quantity;
+  item.quantity = Number(nextQty.toFixed(8));
+  item.average_price = Number((((currentQty * currentAvgQuote) + (preview.quantity * preview.close)) / nextQty).toFixed(4));
+  item.average_price_currency = preview.quoteCurrency;
+  item.transactions = item.transactions || [];
+  item.transactions.unshift({
+    date: todayKst(),
+    side: "buy",
+    quantity: Number(preview.quantity.toFixed(8)),
+    price: preview.close,
+    price_currency: preview.quoteCurrency,
+    memo: "주식 모으기 실행",
+  });
+  item.transactions = item.transactions.slice(0, 20);
+  item.plan.last_executed_date = todayKst();
+  item.plan.last_executed_at = new Date().toISOString();
+  item.plan.last_executed_quantity = Number(preview.quantity.toFixed(8));
+  item.plan.last_executed_price = preview.close;
+  await requestJson("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state.portfolio),
+  });
+  await loadAll();
+  toast(`${item.name} 모으기를 ${preview.quantity.toFixed(6)}주 반영했습니다.`);
 }
 
 function renderDiscoverResults() {
@@ -319,6 +402,10 @@ function renderPlanList(portfolio) {
           <input name="memo" value="${plan.memo || ""}" placeholder="예: 월요일 1만원">
         </label>
         <button type="submit">저장</button>
+        <div class="plan-execute-row">
+          <span>${escapeHtml(planExecutionLabel(item))}${plan.last_executed_date ? ` · 마지막 반영 ${escapeHtml(plan.last_executed_date)}` : ""}</span>
+          <button data-execute-plan="${escapeHtml(item.id)}" class="primary" type="button" ${planCanExecute(item) ? "" : "disabled"}>${planExecutedToday(item) ? "오늘 반영됨" : "오늘 모으기 반영"}</button>
+        </div>
       </form>
     `;
   }).join("");
@@ -860,6 +947,11 @@ $("#planList").addEventListener("submit", async (event) => {
   } catch (error) {
     toast(`저장 실패: ${error.message}`);
   }
+});
+$("#planList").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-execute-plan]");
+  if (!button) return;
+  executePlan(button.dataset.executePlan).catch((error) => toast(`모으기 반영 실패: ${error.message}`));
 });
 
 document.querySelectorAll(".discover-tab").forEach((button) => {

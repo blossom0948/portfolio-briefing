@@ -789,13 +789,38 @@ pre.answer {
   margin-top: 12px;
 }
 
+.plan-execute-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(235,235,245,0.14);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.055);
+}
+
+.plan-execute-row span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.58;
+  transform: none;
+}
+
 @media (max-width: 920px) {
   .holding-form-card,
   .holding-form-card .wide-row,
   .inline-control,
   .discover-search,
   .discover-tabs,
-  .discover-form { grid-template-columns: 1fr; }
+  .discover-form,
+  .plan-execute-row { grid-template-columns: 1fr; }
 
   .discover-item {
     grid-template-columns: 28px 46px minmax(0, 1fr);
