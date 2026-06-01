@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import smtplib
 import ssl
 from dataclasses import dataclass
@@ -76,6 +77,18 @@ def is_today_kst(value: Any, today: Any | None = None) -> tuple[bool, datetime |
         return False, None
     target = today or now_kst().date()
     return published_at.date() == target, published_at
+
+
+def news_date_query(query: str) -> str:
+    today = now_kst().date()
+    tomorrow = today + timedelta(days=1)
+    return f"{query} when:1d after:{today.isoformat()} before:{tomorrow.isoformat()}"
+
+
+def news_fingerprint(item: dict[str, str]) -> str:
+    title = re.sub(r"\s+", " ", item.get("title", "").lower()).strip()
+    title = re.sub(r"\s+-\s+[^-]+$", "", title)
+    return title or item.get("link", "")
 
 
 def load_env() -> None:
@@ -380,8 +393,17 @@ def google_news(
     translate: bool = False,
 ) -> list[dict[str, str]]:
     today = now_kst().date()
-    url = f"https://news.google.com/rss/search?q={quote_plus(f'{query} when:1d')}&hl={hl}&gl={gl}&ceid={ceid}"
-    response = requests.get(url, timeout=20)
+    rss_query = news_date_query(query)
+    url = f"https://news.google.com/rss/search?q={quote_plus(rss_query)}&hl={hl}&gl={gl}&ceid={ceid}&scoring=n"
+    response = requests.get(
+        url,
+        headers={
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "User-Agent": "Mozilla/5.0 PortfolioBriefing/1.0",
+        },
+        timeout=20,
+    )
     response.raise_for_status()
     root = ElementTree.fromstring(response.content)
     items = []
@@ -400,6 +422,7 @@ def google_news(
                 "source": source,
                 "kind": kind,
                 "published_at": published_at.strftime("%Y-%m-%d %H:%M"),
+                "query": rss_query,
             }
         )
         if len(items) >= limit:
@@ -475,44 +498,32 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
     portfolio = load_portfolio()
     holdings = [normalize_holding(item) for item in portfolio.get("holdings", [])]
     domestic_query = " OR ".join(item["name"] for item in holdings if item["market"] == "KR") or "삼성전자"
-    domestic = google_news(f"{domestic_query} 주가 HBM 자사주", limit_each, kind="국내")
-    domestic_seen_links = {item.get("link") for item in domestic}
-    domestic_fallback_queries = [
+    domestic = []
+    domestic_seen = set()
+    domestic_queries = [
         f"{domestic_query} 주가",
         f"{domestic_query} 반도체 HBM",
         f"{domestic_query} 자사주",
+        f"{domestic_query} 실적",
     ]
-    for query in domestic_fallback_queries:
+    for query in domestic_queries:
         if len(domestic) >= limit_each:
             break
-        for item in google_news(query, limit_each, kind="국내"):
-            link = item.get("link")
-            if link in domestic_seen_links:
+        for item in google_news(query, limit_each * 2, kind="국내"):
+            key = news_fingerprint(item)
+            if key in domestic_seen:
                 continue
-            domestic_seen_links.add(link)
+            domestic_seen.add(key)
             domestic.append(item)
             if len(domestic) >= limit_each:
                 break
     overseas = []
-    seen_links = set()
-    for holding in holdings:
-        if holding["market"] == "US":
-            candidates = yf_news(holding["symbol"], 2)
-        else:
-            candidates = []
-        for item in candidates:
-            if not is_relevant_overseas_news(item):
-                continue
-            link = item.get("link")
-            if link in seen_links:
-                continue
-            seen_links.add(link)
-            overseas.append(item)
-        if len(overseas) >= limit_each:
-            break
+    seen = set()
     us_symbols = [item["symbol"] for item in holdings if item["market"] == "US"] or ["QQQM", "VOO"]
     fallback_queries = [
         *(f"{symbol} ETF" for symbol in us_symbols),
+        "Invesco NASDAQ 100 ETF",
+        "Vanguard S&P 500 ETF",
         "Nasdaq 100 ETF market",
         "S&P 500 ETF market",
     ]
@@ -530,10 +541,10 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
         ):
             if not is_relevant_overseas_news(item):
                 continue
-            link = item.get("link")
-            if link in seen_links:
+            key = news_fingerprint(item)
+            if key in seen:
                 continue
-            seen_links.add(link)
+            seen.add(key)
             overseas.append(item)
             if len(overseas) >= limit_each:
                 break
