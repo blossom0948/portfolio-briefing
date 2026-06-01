@@ -24,10 +24,7 @@
 
       <div class="landing-content">
         <p class="landing-kicker">Portfolio Now Brief</p>
-        <h1>내 주식의 흐름이<br>아침 브리핑이 됩니다</h1>
-        <p class="landing-copy">
-          선택한 종목의 실제 가격 차트를 배경으로 보고, 보유 현황과 뉴스 요약, AI 질문까지 한곳에서 관리하세요.
-        </p>
+        <h1>내 주식 브리핑하기</h1>
         <div class="landing-actions">
           <button id="enterDashboardBtn" class="landing-primary">대시보드 열기</button>
           <button id="landingBriefBtn" class="landing-secondary">오늘 브리핑 보기</button>
@@ -45,13 +42,13 @@
 
     <div id="appShell" class="app-shell" hidden>
     <aside class="sidebar">
-      <div class="brand">
+      <button class="brand brand-button" type="button" data-return-landing aria-label="랜딩 페이지로 돌아가기">
         <span class="brand-mark">B</span>
         <div>
           <strong>Briefolio</strong>
           <span>Portfolio Now</span>
         </div>
-      </div>
+      </button>
       <nav>
         <button class="nav-item active" data-view="dashboard">대시보드</button>
         <button class="nav-item" data-view="manage">주식 설정</button>

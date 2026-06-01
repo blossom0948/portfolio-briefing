@@ -257,8 +257,15 @@
   }
 
   function showApp(view = "dashboard") {
-    landingPage.hidden = true;
     appShell.hidden = false;
+    appShell.classList.remove("app-shell-enter");
+    void appShell.offsetWidth;
+    appShell.classList.add("app-shell-enter");
+    landingPage.classList.add("landing-exit");
+    window.setTimeout(() => {
+      landingPage.hidden = true;
+      landingPage.classList.remove("landing-exit");
+    }, 260);
     if (typeof window.showView === "function") {
       window.showView(view);
     } else {
@@ -267,11 +274,27 @@
     history.replaceState(null, "", `#${view}`);
   }
 
+  function showLanding() {
+    landingPage.hidden = false;
+    landingPage.classList.remove("landing-exit");
+    landingPage.classList.add("landing-return");
+    appShell.classList.add("app-shell-exit");
+    window.setTimeout(() => {
+      appShell.hidden = true;
+      appShell.classList.remove("app-shell-exit", "app-shell-enter");
+      landingPage.classList.remove("landing-return");
+    }, 260);
+    history.replaceState(null, "", location.pathname);
+  }
+
   document.querySelectorAll("[data-open-view]").forEach((button) => {
     button.addEventListener("click", () => showApp(button.dataset.openView || "dashboard"));
   });
   document.querySelector("#enterDashboardBtn")?.addEventListener("click", () => showApp("dashboard"));
   document.querySelector("#landingBriefBtn")?.addEventListener("click", () => showApp("briefing"));
+  document.querySelectorAll("[data-return-landing]").forEach((button) => {
+    button.addEventListener("click", showLanding);
+  });
 
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
