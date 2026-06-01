@@ -100,6 +100,15 @@ def ai():
     return jsonify({"answer": core.ask_ai(question)})
 
 
+@app.post("/api/capture")
+def capture():
+    payload = request.json or {}
+    image = str(payload.get("image") or "")
+    if "," in image and image.startswith("data:"):
+        image = image.split(",", 1)[1]
+    return jsonify(core.analyze_capture_image(image, str(payload.get("mimeType") or "image/png")))
+
+
 @app.post("/api/holdings")
 def add_holding():
     portfolio = core.load_portfolio()

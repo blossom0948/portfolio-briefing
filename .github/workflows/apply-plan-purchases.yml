@@ -1,0 +1,30 @@
+name: Apply plan purchases
+
+on:
+  schedule:
+    # 22:40 Asia/Seoul is 13:40 UTC. During US winter time, the second run is after 09:30 New York.
+    # The script records last_executed_date, so the second run will not duplicate a completed plan.
+    - cron: "40 13 * * *"
+    - cron: "40 14 * * *"
+  workflow_dispatch:
+
+jobs:
+  apply-plans:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply due plan purchases
+        env:
+          PORTFOLIO_CONFIG_URL: ${{ secrets.PORTFOLIO_CONFIG_URL }}
+          USD_KRW_FALLBACK: ${{ secrets.USD_KRW_FALLBACK }}
+        run: python scripts/apply_plan_purchases.py

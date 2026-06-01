@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_PATH = Path(os.environ.get("PORTFOLIO_DATA_PATH", ROOT / "data" / "portfolio.json"))
 ENV_PATH = ROOT / ".env"
 KST = ZoneInfo("Asia/Seoul")
+NY = ZoneInfo("America/New_York")
 REQUEST_HEADERS = {
     "Cache-Control": "no-cache",
     "Pragma": "no-cache",
@@ -642,6 +643,115 @@ def update_plan(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         save_portfolio(portfolio)
         return item
     raise KeyError("holding not found")
+
+
+def _weekday_code(day: datetime) -> str:
+    return ["MO", "TU", "WE", "TH", "FR", "SA", "SU"][day.weekday()]
+
+
+def _is_first_weekday_of_month(day: datetime) -> bool:
+    return day.day <= 7
+
+
+def plan_is_due(plan: dict[str, Any], run_at: datetime | None = None) -> bool:
+    run_at = run_at or now_kst()
+    if not plan.get("enabled") or float(plan.get("amount") or 0) <= 0:
+        return False
+    if str(plan.get("weekday") or "MO").upper() != _weekday_code(run_at):
+        return False
+    if plan.get("last_executed_date") == run_at.strftime("%Y-%m-%d"):
+        return False
+    frequency = str(plan.get("frequency") or "weekly").lower()
+    if frequency == "monthly":
+        return _is_first_weekday_of_month(run_at)
+    return True
+
+
+def us_market_opened_for_plan(run_at: datetime | None = None) -> bool:
+    run_at = run_at or now_kst()
+    ny_time = run_at.astimezone(NY)
+    if ny_time.weekday() >= 5:
+        return False
+    market_open = ny_time.replace(hour=9, minute=30, second=0, microsecond=0)
+    return ny_time >= market_open
+
+
+def apply_due_plan_purchases(run_at: datetime | None = None) -> dict[str, Any]:
+    run_at = run_at or now_kst()
+    today = run_at.strftime("%Y-%m-%d")
+    portfolio = load_portfolio()
+    holdings = portfolio.setdefault("holdings", [])
+    usd_krw_rate = get_usd_krw_rate()
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for index, raw_holding in enumerate(holdings):
+        item = normalize_holding(raw_holding)
+        plan = item.get("plan") or default_plan("KRW" if item["market"] == "KR" else "USD")
+        if not plan_is_due(plan, run_at):
+            continue
+        if item["market"] == "US" and not us_market_opened_for_plan(run_at):
+            skipped.append({"symbol": item["symbol"], "reason": "US market has not opened yet"})
+            continue
+        try:
+            priced = get_price(item, usd_krw_rate)
+            close = float(priced.get("close") or 0)
+            quote_currency = priced.get("currency") or ("KRW" if item["market"] == "KR" else "USD")
+            plan_currency = "KRW" if item["market"] == "KR" else sanitize_currency(plan.get("currency"), "KRW")
+            quote_amount = to_quote_amount(float(plan.get("amount") or 0), plan_currency, quote_currency, usd_krw_rate)
+            quantity = quote_amount / close if close and quote_amount else 0
+            if not quantity:
+                skipped.append({"symbol": item["symbol"], "reason": "price or amount missing"})
+                continue
+            current_qty = float(item.get("quantity") or 0)
+            current_avg = to_quote_amount(
+                float(item.get("average_price") or 0),
+                item.get("average_price_currency") or quote_currency,
+                quote_currency,
+                usd_krw_rate,
+            )
+            next_qty = current_qty + quantity
+            item["quantity"] = round(next_qty, 8)
+            item["average_price"] = round(((current_qty * current_avg) + (quantity * close)) / next_qty, 4)
+            item["average_price_currency"] = quote_currency
+            item.setdefault("transactions", []).insert(
+                0,
+                {
+                    "date": today,
+                    "side": "buy",
+                    "quantity": round(quantity, 8),
+                    "price": close,
+                    "price_currency": quote_currency,
+                    "memo": f"자동 주식 모으기 반영 · 가격일 {priced.get('date') or today}",
+                },
+            )
+            item["transactions"] = item["transactions"][:20]
+            plan["last_executed_date"] = today
+            plan["last_executed_at"] = run_at.isoformat()
+            plan["last_executed_quantity"] = round(quantity, 8)
+            plan["last_executed_price"] = close
+            plan["last_executed_price_date"] = priced.get("date") or today
+            plan["last_executed_mode"] = "auto"
+            item["plan"] = plan
+            holdings[index] = item
+            applied.append(
+                {
+                    "name": item["name"],
+                    "symbol": item["symbol"],
+                    "market": item["market"],
+                    "quantity": round(quantity, 8),
+                    "price": close,
+                    "currency": quote_currency,
+                    "amount": float(plan.get("amount") or 0),
+                    "amount_currency": plan_currency,
+                }
+            )
+        except Exception as exc:
+            skipped.append({"symbol": item.get("symbol"), "reason": str(exc)})
+
+    if applied:
+        save_portfolio(portfolio)
+    return {"date": today, "applied": applied, "skipped": skipped}
 
 
 def google_news(
@@ -1323,6 +1433,96 @@ def friendly_ai_error(message: str) -> str:
     if "timeout" in lowered or "timed out" in lowered:
         return "AI 응답이 너무 오래 걸렸습니다. 앱은 자동으로 내장 분석 답변으로 전환했습니다."
     return "외부 AI 제공자가 일시적으로 응답하지 않았습니다."
+
+
+def parse_json_block(text: str) -> dict[str, Any] | None:
+    cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    match = re.search(r"\{[\s\S]*\}", cleaned)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+
+
+def normalize_capture_result(data: dict[str, Any] | None) -> dict[str, Any]:
+    data = data or {}
+    holdings = []
+    for raw in data.get("holdings") or []:
+        symbol = str(raw.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        market = str(raw.get("market") or ("KR" if symbol.isdigit() else "US")).strip().upper()
+        market = "KR" if market == "KR" else "US"
+        currency = "KRW" if market == "KR" else sanitize_currency(raw.get("average_price_currency"), "USD")
+        holdings.append(
+            {
+                "name": str(raw.get("name") or symbol).strip(),
+                "symbol": symbol,
+                "market": market,
+                "quantity": float(raw.get("quantity") or 0),
+                "average_price": float(raw.get("average_price") or 0),
+                "average_price_currency": currency,
+            }
+        )
+    return {
+        "summary": str(data.get("summary") or "캡처에서 읽은 보유 종목을 확인했습니다."),
+        "warnings": [str(item) for item in data.get("warnings") or []],
+        "holdings": holdings,
+    }
+
+
+def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> dict[str, Any]:
+    prompt = (
+        "토스증권 보유 주식 캡처를 읽어 JSON만 반환해. "
+        "필드: summary, warnings, holdings. holdings 각 항목은 "
+        "name, symbol, market(US 또는 KR), quantity, average_price, average_price_currency(KRW 또는 USD). "
+        "화면에 안 보이는 값은 0으로 두고 추측은 warnings에 적어."
+    )
+    if os.environ.get("OPENAI_API_KEY"):
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": os.environ.get("OPENAI_VISION_MODEL") or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                    "input": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt},
+                                {"type": "input_image", "image_url": f"data:{mime_type};base64,{image_base64}"},
+                            ],
+                        }
+                    ],
+                    "max_output_tokens": 1200,
+                },
+                timeout=30,
+            )
+            data = response.json()
+            if response.status_code >= 400:
+                return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [data.get("error", {}).get("message") or response.text]}
+            text = data.get("output_text") or ""
+            if not text:
+                chunks = []
+                for item in data.get("output", []):
+                    for content in item.get("content", []):
+                        if content.get("text"):
+                            chunks.append(content["text"])
+                text = "\n".join(chunks)
+            return normalize_capture_result(parse_json_block(text))
+        except Exception as exc:
+            return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [str(exc)]}
+    return {
+        "summary": "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
+        "holdings": [],
+        "warnings": ["OPENAI_API_KEY를 환경 변수에 넣으면 토스 캡처를 읽을 수 있습니다."],
+    }
 
 
 def ask_openai(prompt: str) -> str:

@@ -3,6 +3,7 @@ const state = {
   snapshot: null,
   briefing: "",
   discover: { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 },
+  capturedHoldings: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -70,6 +71,138 @@ async function requestJson(url, options) {
     throw error;
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+function setAiDock(open) {
+  const panel = $("#aiDockPanel");
+  const button = $("#aiDockToggle");
+  if (!panel || !button) return;
+  panel.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+}
+
+function fileToImagePayload(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("이미지를 읽지 못했습니다."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+      image.onload = () => {
+        const maxSide = 1600;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+        const dataUrl = canvas.toDataURL(mimeType, 0.88);
+        resolve({ image: dataUrl.split(",")[1], mimeType });
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function captureDiff(item) {
+  const current = state.portfolio?.holdings?.find((holding) => holding.symbol === item.symbol && holding.market === item.market);
+  if (!current) return "새 종목";
+  const currentQty = Number(current.quantity || 0);
+  const nextQty = Number(item.quantity || 0);
+  const qtyDiff = nextQty - currentQty;
+  if (Math.abs(qtyDiff) < 0.000001) return "수량 같음";
+  return `${qtyDiff > 0 ? "+" : ""}${qtyDiff.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주 보정`;
+}
+
+function renderCapturePreview(result) {
+  state.capturedHoldings = result.holdings || [];
+  const preview = $("#capturePreview");
+  const answer = $("#aiDockAnswer");
+  const applyButton = $("#applyCaptureBtn");
+  if (answer) {
+    answer.textContent = [
+      result.summary || "캡처 분석이 끝났습니다.",
+      ...(result.warnings || []).map((warning) => `주의: ${warning}`),
+    ].join("\n");
+  }
+  if (!preview) return;
+  preview.innerHTML = state.capturedHoldings.length ? state.capturedHoldings.map((item) => `
+    <article>
+      <strong>${escapeHtml(item.name || item.symbol)} <span class="muted">${escapeHtml(item.symbol)} · ${escapeHtml(item.market)}</span></strong>
+      <span>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주</span>
+      <small>${captureDiff(item)}</small>
+    </article>
+  `).join("") : "<p class='muted'>읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요.</p>";
+  if (applyButton) applyButton.disabled = !state.capturedHoldings.length;
+}
+
+async function analyzeTossCapture(file) {
+  if (!file) return;
+  $("#aiDockAnswer").textContent = "캡처를 가볍게 줄이고 AI가 종목, 수량, 평단을 읽는 중입니다...";
+  $("#applyCaptureBtn").disabled = true;
+  const payload = await fileToImagePayload(file);
+  const result = await requestJson("/api/capture", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  renderCapturePreview(result);
+}
+
+async function applyCapturedHoldings() {
+  if (!state.portfolio || !state.capturedHoldings.length) return;
+  for (const captured of state.capturedHoldings) {
+    let item = state.portfolio.holdings.find((holding) => holding.symbol === captured.symbol && holding.market === captured.market);
+    if (!item) {
+      item = {
+        id: `${captured.market.toLowerCase()}-${captured.symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name: captured.name || captured.symbol,
+        symbol: captured.symbol,
+        market: captured.market,
+        quantity: 0,
+        average_price: 0,
+        average_price_currency: captured.market === "KR" ? "KRW" : "USD",
+        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" },
+        transactions: [],
+      };
+      state.portfolio.holdings.push(item);
+    }
+    item.name = captured.name || item.name;
+    item.quantity = Number(Number(captured.quantity || 0).toFixed(8));
+    if (Number(captured.average_price || 0) > 0) {
+      item.average_price = Number(captured.average_price || 0);
+      item.average_price_currency = captured.average_price_currency || (captured.market === "KR" ? "KRW" : "USD");
+    }
+  }
+  await requestJson("/api/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(state.portfolio),
+  });
+  await loadAll();
+  toast("토스 캡처 기준으로 보이는 종목을 맞췄습니다.");
+}
+
+async function askDockAi() {
+  const question = $("#aiDockQuestion")?.value.trim();
+  if (!question) {
+    $("#aiDockAnswer").textContent = "질문을 입력하거나 토스 캡처를 올려주세요.";
+    return;
+  }
+  $("#aiDockAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
+  try {
+    const result = await requestJson("/api/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+      timeoutMs: 18000,
+    });
+    $("#aiDockAnswer").textContent = result.answer;
+  } catch (error) {
+    $("#aiDockAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
   }
 }
 
@@ -1095,6 +1228,18 @@ document.querySelectorAll(".quick-prompts button").forEach((button) => {
     $("#proAiQuestion").value = button.dataset.prompt;
     switchProPanel("ai");
   });
+});
+$("#aiDockToggle")?.addEventListener("click", () => setAiDock($("#aiDockPanel")?.hidden));
+$("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
+$("#aiDockAsk")?.addEventListener("click", () => askDockAi());
+$("#tossCaptureInput")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  analyzeTossCapture(file).catch((error) => {
+    $("#aiDockAnswer").textContent = `캡처 분석 실패: ${error.message}`;
+  });
+});
+$("#applyCaptureBtn")?.addEventListener("click", () => {
+  applyCapturedHoldings().catch((error) => toast(`캡처 반영 실패: ${error.message}`));
 });
 
 $("#tradeForm").date.valueAsDate = new Date();

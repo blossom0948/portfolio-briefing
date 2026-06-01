@@ -345,6 +345,30 @@
     </main>
     </div>
 
+    <aside id="aiDock" class="ai-dock" aria-label="Briefolio AI">
+      <button id="aiDockToggle" class="ai-dock-button" type="button" aria-expanded="false">
+        <span>AI</span>
+      </button>
+      <section id="aiDockPanel" class="ai-dock-panel liquid-glass-container" hidden>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">AI Sync</p>
+            <h2>토스 캡처로 맞추기</h2>
+          </div>
+          <button id="aiDockClose" type="button">닫기</button>
+        </div>
+        <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
+        <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
+        <pre id="aiDockAnswer" class="answer compact-answer">캡처를 올리면 현재 앱 기록과 비교해서 토스 화면 기준으로 맞출 수 있습니다.</pre>
+        <label class="capture-drop">
+          <input id="tossCaptureInput" type="file" accept="image/*">
+          <span>토스증권 캡처 선택</span>
+        </label>
+        <div id="capturePreview" class="capture-preview"></div>
+        <button id="applyCaptureBtn" class="primary wide" type="button" disabled>캡처 기준으로 반영</button>
+      </section>
+    </aside>
+
     <div id="toast" role="status"></div>
     <script src="/static/app.js"></script>
     <script src="/static/landing.js"></script>
