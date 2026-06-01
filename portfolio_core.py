@@ -17,8 +17,11 @@ from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import requests
+import trafilatura
 import yfinance as yf
 from deep_translator import GoogleTranslator
+from bs4 import BeautifulSoup
+from googlenewsdecoder import gnewsdecoder
 from pykrx import stock
 
 
@@ -26,6 +29,11 @@ ROOT = Path(__file__).resolve().parent
 DATA_PATH = Path(os.environ.get("PORTFOLIO_DATA_PATH", ROOT / "data" / "portfolio.json"))
 ENV_PATH = ROOT / ".env"
 KST = ZoneInfo("Asia/Seoul")
+REQUEST_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "User-Agent": "Mozilla/5.0 PortfolioBriefing/1.0",
+}
 
 
 @dataclass
@@ -89,6 +97,22 @@ def news_fingerprint(item: dict[str, str]) -> str:
     title = re.sub(r"\s+", " ", item.get("title", "").lower()).strip()
     title = re.sub(r"\s+-\s+[^-]+$", "", title)
     return title or item.get("link", "")
+
+
+def contains_korean(text: str) -> bool:
+    return any("가" <= char <= "힣" for char in text)
+
+
+def clean_text(text: str) -> str:
+    text = html.unescape(text or "")
+    text = re.sub(r"이미지\s*확대보기", " ", text)
+    text = re.sub(r"(사진|자료|그래픽|출처)=[^\s]+", " ", text)
+    text = re.sub(r"\S+@\S+", " ", text)
+    text = re.sub(r"입력\s*[:：]?\s*\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}[^ ]*", " ", text)
+    text = re.sub(r"수정\s*[:：]?\s*\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}[^ ]*", " ", text)
+    text = re.sub(r"(프린트|이메일|카카오톡|페이스북|트위터)", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def load_env() -> None:
@@ -433,12 +457,28 @@ def google_news(
 def translate_title(title: str) -> str:
     if not title:
         return title
-    if any("가" <= char <= "힣" for char in title):
+    if contains_korean(title):
         return title
     try:
         return GoogleTranslator(source="auto", target="ko").translate(title)
     except Exception:
         return title
+
+
+def translate_text(text: str) -> str:
+    text = clean_text(text)
+    if not text or contains_korean(text):
+        return text
+    try:
+        chunks = []
+        start = 0
+        while start < len(text):
+            chunk = text[start : start + 3500]
+            chunks.append(GoogleTranslator(source="auto", target="ko").translate(chunk))
+            start += 3500
+        return clean_text(" ".join(chunks))
+    except Exception:
+        return text
 
 
 def is_relevant_overseas_news(item: dict[str, str]) -> bool:
@@ -492,6 +532,240 @@ def yf_news(symbol: str, limit: int = 3) -> list[dict[str, str]]:
         if len(items) >= limit:
             break
     return items
+
+
+def resolve_news_link(link: str) -> str:
+    if not link or "news.google.com" not in link:
+        return link
+    try:
+        decoded = gnewsdecoder(link)
+        if decoded.get("status") and decoded.get("decoded_url"):
+            return str(decoded["decoded_url"])
+    except Exception:
+        return link
+    return link
+
+
+def extract_article_text(link: str) -> tuple[str, str]:
+    resolved = resolve_news_link(link)
+    if not resolved:
+        return "", link
+    try:
+        response = requests.get(resolved, headers=REQUEST_HEADERS, timeout=20, allow_redirects=True)
+        response.raise_for_status()
+    except Exception:
+        return "", resolved
+
+    extracted = trafilatura.extract(
+        response.text,
+        include_comments=False,
+        include_tables=False,
+        favor_precision=True,
+    )
+    extracted = clean_text(extracted or "")
+    if len(extracted) >= 250:
+        return extracted[:4500], resolved
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "form", "header", "footer", "nav", "aside"]):
+        tag.decompose()
+
+    selectors = [
+        '[itemprop="articleBody"]',
+        "article",
+        "main",
+        "#articleBody",
+        ".articleBody",
+        ".article-body",
+        ".article_view",
+        ".article-content",
+        ".news_content",
+        ".view_con",
+        ".content",
+        "body",
+    ]
+    noise = [
+        "무단전재",
+        "재배포 금지",
+        "copyright",
+        "all rights reserved",
+        "구독",
+        "로그인",
+        "기사제보",
+        "광고",
+        "관련기사",
+        "기자",
+    ]
+    best = ""
+    for selector in selectors:
+        parts = []
+        for container in soup.select(selector):
+            if selector != "body":
+                direct = clean_text(container.get_text(" ", strip=True))
+                if 120 <= len(direct) <= 6000:
+                    parts.append(direct)
+            for paragraph in container.find_all(["p", "div"], recursive=True):
+                text = clean_text(paragraph.get_text(" ", strip=True))
+                lower = text.lower()
+                if len(text) < 45 or len(text) > 1200:
+                    continue
+                if any(marker in lower for marker in noise):
+                    continue
+                parts.append(text)
+        candidate = clean_text(" ".join(dict.fromkeys(parts)))
+        if len(candidate) > len(best):
+            best = candidate
+        if selector != "body" and len(candidate) >= 350:
+            break
+    return best[:4500], resolved
+
+
+def split_sentences(text: str) -> list[str]:
+    text = clean_text(text)
+    if not text:
+        return []
+    chunks = re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s+|(?<=요\.)\s+", text)
+    sentences = []
+    for chunk in chunks:
+        sentence = clean_text(chunk)
+        if 35 <= len(sentence) <= 260:
+            sentences.append(sentence)
+    return sentences
+
+
+def keyword_terms(title: str) -> set[str]:
+    terms = {
+        "삼성전자",
+        "주가",
+        "반도체",
+        "HBM",
+        "자사주",
+        "실적",
+        "ETF",
+        "QQQM",
+        "VOO",
+        "나스닥",
+        "S&P",
+        "S&P 500",
+        "미국",
+        "금리",
+        "AI",
+    }
+    for word in re.findall(r"[A-Za-z0-9&.]+|[가-힣]{2,}", title):
+        if len(word) >= 2:
+            terms.add(word)
+    return {term.lower() for term in terms}
+
+
+def pick_key_sentences(text: str, title: str, count: int = 3) -> list[str]:
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+    terms = keyword_terms(title)
+    title_terms = {
+        word.lower()
+        for word in re.findall(r"[A-Za-z0-9&.]+|[가-힣]{2,}", title)
+        if len(word) >= 2
+    }
+    noise_terms = [
+        "많이 본 기사",
+        "오늘의 주요뉴스",
+        "관련기사",
+        "헤드라인 뉴스",
+        "무단전재",
+        "재배포",
+        "기자",
+    ]
+    scored = []
+    for index, sentence in enumerate(sentences[:24]):
+        lowered = sentence.lower()
+        if any(term in sentence for term in noise_terms):
+            continue
+        if title_terms and not any(term in lowered for term in title_terms) and index > 2:
+            continue
+        score = sum(1 for term in terms if term and term in lowered)
+        score += max(0, 5 - index) * 0.25
+        scored.append((score, index, sentence))
+    if not scored:
+        scored = [(max(0, 5 - index) * 0.25, index, sentence) for index, sentence in enumerate(sentences[:5])]
+    selected = sorted(sorted(scored, reverse=True)[:count], key=lambda row: row[1])
+    return [sentence for _, _, sentence in selected]
+
+
+def simple_news_context(item: dict[str, str], sentences: list[str]) -> str:
+    combined = f"{item.get('title_ko', '')} {' '.join(sentences)}"
+    lowered = combined.lower()
+    if item.get("kind") == "국내":
+        if "hbm" in lowered or "반도체" in lowered:
+            return "쉽게 말하면, 삼성전자가 돈을 더 잘 벌 수 있을지 사람들이 반도체와 HBM 흐름을 보고 있다는 뜻입니다."
+        if "자사주" in lowered:
+            return "쉽게 말하면, 회사가 자기 주식을 사거나 없애면 남은 주식의 가치가 올라갈 수 있어서 투자자들이 관심을 갖습니다."
+        if "주가" in lowered or "강세" in lowered or "상승" in lowered:
+            return "쉽게 말하면, 오늘 시장에서 삼성전자에 돈이 많이 몰렸고 주가 움직임이 커졌다는 뜻입니다."
+        return "쉽게 말하면, 삼성전자 주변에 새 소식이 나왔고 이것이 주가와 투자심리에 영향을 줄 수 있습니다."
+    if "s&p" in lowered or "voo" in lowered:
+        return "쉽게 말하면, VOO는 미국 큰 회사들을 묶어 산 것이라 미국 전체 시장 분위기가 중요합니다."
+    if "nasdaq" in lowered or "qqqm" in lowered or "technology" in lowered or "기술" in lowered:
+        return "쉽게 말하면, QQQM은 기술주 비중이 커서 AI, 반도체, 큰 기술회사 뉴스에 민감하게 움직입니다."
+    return "쉽게 말하면, 미국 ETF는 한 회사보다 미국 시장 전체 분위기와 금리, 큰 기업 실적에 영향을 많이 받습니다."
+
+
+def portfolio_connection(item: dict[str, str]) -> str:
+    if item.get("kind") == "국내":
+        return "내 포트폴리오에서는 삼성전자 보유 판단과 추가매수 타이밍을 볼 때 참고할 뉴스입니다."
+    title = f"{item.get('title', '')} {item.get('title_ko', '')}".lower()
+    if "voo" in title or "s&p" in title:
+        return "내 포트폴리오에서는 VOO가 미국 대표 기업 전체에 투자하는 상품이라 시장 방향을 볼 때 중요합니다."
+    if "qqqm" in title or "nasdaq" in title or "invesco" in title:
+        return "내 포트폴리오에서는 QQQM이 기술주 중심이라 성장주 분위기를 볼 때 중요합니다."
+    return "내 포트폴리오에서는 QQQM과 VOO의 단기 분위기를 확인하는 참고 뉴스입니다."
+
+
+def make_easy_sentence(sentence: str) -> str:
+    sentence = clean_text(sentence)
+    replacements = {
+        "시가총액": "시총(회사 전체 값)",
+        "영업이익": "영업이익(장사해서 남긴 돈)",
+        "고대역폭 메모리(HBM)": "AI용 빠른 메모리(HBM)",
+        "고대역폭 메모리": "AI용 빠른 메모리",
+        "채권수익률": "미국 국채 금리",
+        "거시 데이터": "경제 전체를 보여주는 숫자",
+        "투자심리": "투자자들의 분위기",
+    }
+    for old, new in replacements.items():
+        sentence = sentence.replace(old, new)
+    sentence = re.sub(r"\(NYSE[^)]*\)", "", sentence)
+    sentence = re.sub(r"\([^)]{35,}\)", "", sentence)
+    if len(sentence) > 190:
+        sentence = sentence[:190].rsplit(" ", 1)[0].rstrip(" ,") + "..."
+    return sentence
+
+
+def summarize_news_item(item: dict[str, str]) -> dict[str, str]:
+    body, resolved_link = extract_article_text(item.get("link", ""))
+    translated_body = translate_text(body)
+    title = item.get("title_ko") or translate_title(item.get("title", ""))
+    sentences = pick_key_sentences(translated_body, title, 3)
+    if sentences:
+        easy_sentences = [make_easy_sentence(sentence) for sentence in sentences]
+        summary = [
+            f"핵심 내용: {easy_sentences[0]}",
+            *[f"조금 더 보면: {sentence}" for sentence in easy_sentences[1:]],
+            simple_news_context(item, sentences),
+            portfolio_connection(item),
+        ]
+    else:
+        summary = [
+            f"원문 본문을 자동으로 충분히 읽지는 못했지만, 제목 기준으로는 '{title}'에 관한 뉴스입니다.",
+            simple_news_context(item, []),
+            portfolio_connection(item),
+        ]
+    return {
+        **item,
+        "title_ko": title,
+        "summary": "\n".join(f"- {line}" for line in summary),
+        "resolved_link": resolved_link or item.get("link", ""),
+    }
 
 
 def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
@@ -590,6 +864,8 @@ def action_notes(snapshot: dict[str, Any]) -> list[str]:
 def build_briefing_text() -> str:
     snapshot = get_portfolio_snapshot()
     news = get_news(3)
+    domestic_news = [summarize_news_item(item) for item in news["domestic"]]
+    overseas_news = [summarize_news_item(item) for item in news["overseas"]]
     lines = [
         f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}",
         "",
@@ -601,12 +877,29 @@ def build_briefing_text() -> str:
         else:
             lines.append(f"- {item['name']}: {format_change(item)}")
     lines.extend(["", "오늘의 주요 뉴스들"])
-    today_news = news["domestic"] + news["overseas"]
+    today_news = domestic_news + overseas_news
     if today_news:
-        for item in today_news:
-            published = f", {item['published_at']} KST" if item.get("published_at") else ""
-            lines.append(f"- [{item['kind']}] {item['title_ko']} ({item['source']}{published})")
-            lines.append(f"  {item['link']}")
+        lines.append("")
+        lines.append("국내 뉴스")
+        if domestic_news:
+            for index, item in enumerate(domestic_news, 1):
+                published = f", {item['published_at']} KST" if item.get("published_at") else ""
+                lines.append(f"{index}. {item['title_ko']} ({item['source']}{published})")
+                lines.append(item["summary"])
+                lines.append(f"링크: {item.get('resolved_link') or item['link']}")
+                lines.append("")
+        else:
+            lines.append("- 오늘자 국내 관련 뉴스가 없습니다.")
+        lines.append("해외 뉴스")
+        if overseas_news:
+            for index, item in enumerate(overseas_news, 1):
+                published = f", {item['published_at']} KST" if item.get("published_at") else ""
+                lines.append(f"{index}. {item['title_ko']} ({item['source']}{published})")
+                lines.append(item["summary"])
+                lines.append(f"링크: {item.get('resolved_link') or item['link']}")
+                lines.append("")
+        else:
+            lines.append("- 오늘자 해외 관련 뉴스가 없습니다.")
     else:
         lines.append("- 오늘자(KST 기준)로 확인된 관련 뉴스가 없습니다. 오래된 기사는 제외했습니다.")
     lines.extend(["", "그래서 오늘 해야 할 것"])
