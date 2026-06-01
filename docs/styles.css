@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   --bg: #eef2f6;
   --surface: #ffffff;
   --soft: #f8fafc;
@@ -21,7 +22,10 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, "Noto Sans KR", sans-serif;
+  font-family: var(--font-apple);
+  font-weight: 500;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 .sidebar {
@@ -533,6 +537,9 @@ pre {
   background: #111827;
   color: #f8fafc;
   border-radius: 8px;
+  font-family: var(--font-apple);
+  font-size: 14px;
+  font-weight: 500;
   white-space: pre-wrap;
   line-height: 1.55;
   overflow: auto;
@@ -1248,7 +1255,7 @@ button:hover {
 
 body {
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "SF Pro Display", "SF Pro Text", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font-family: var(--font-apple);
   background:
     radial-gradient(circle at 16% 10%, rgba(48, 209, 88, 0.10), transparent 32%),
     radial-gradient(circle at 86% 6%, rgba(10, 132, 255, 0.12), transparent 34%),
@@ -1379,6 +1386,7 @@ h2,
 strong,
 dd {
   color: #ffffff;
+  font-weight: 750;
 }
 
 p,
@@ -1425,6 +1433,7 @@ button.primary {
 
 .metrics strong {
   font-size: 24px;
+  letter-spacing: 0;
 }
 
 .holding-card,
@@ -1433,7 +1442,70 @@ button.primary {
 }
 
 .holding-card {
-  padding: 16px;
+  padding: 18px;
+  min-height: 208px;
+}
+
+.holding-main {
+  align-items: flex-start;
+}
+
+.holding-main strong {
+  font-size: 17px;
+  font-weight: 780;
+}
+
+.holding-main span {
+  margin-top: 3px;
+}
+
+.price-line {
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.price-line b {
+  font-size: 24px;
+  line-height: 1.14;
+  letter-spacing: 0;
+}
+
+.price-stack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.price-stack small {
+  color: rgba(235, 235, 245, 0.62);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.price-line .positive,
+.price-line .negative {
+  white-space: nowrap;
+}
+
+.holding-card dl {
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.holding-card dt {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.holding-card dd {
+  font-size: 15px;
+  line-height: 1.24;
+}
+
+.holding-card .plan-chip {
+  margin-top: 14px;
+  line-height: 1.45;
 }
 
 .pill,
@@ -1514,6 +1586,8 @@ pre {
   border: 1px solid rgba(235,235,245,0.16);
   color: rgba(245,245,247,0.94);
   border-radius: 18px;
+  font-family: var(--font-apple);
+  font-weight: 520;
   box-shadow: inset 1px 1px 2px rgba(255,255,255,0.12), inset -1px -1px 2px rgba(0,0,0,0.28);
 }
 

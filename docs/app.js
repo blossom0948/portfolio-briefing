@@ -89,10 +89,11 @@ function renderCapturePreview(result) {
   const preview = $("#capturePreview");
   const answer = $("#aiDockAnswer");
   const applyButton = $("#applyCaptureBtn");
+  const warnings = (result.warnings || []).map(friendlyWarning);
   if (answer) {
     answer.textContent = [
       result.summary || "캡처 분석이 끝났습니다.",
-      ...(result.warnings || []).map((warning) => `주의: ${warning}`),
+      ...warnings.map((warning) => `주의: ${warning}`),
     ].join("\n");
   }
   if (!preview) return;
@@ -102,7 +103,7 @@ function renderCapturePreview(result) {
       <span>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주</span>
       <small>${captureDiff(item)}</small>
     </article>
-  `).join("") : "<p class='muted'>읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요.</p>";
+  `).join("") : `<p class='muted'>${warnings.length ? "AI 한도/키 문제로 캡처를 읽지 못했습니다. 계정 설정을 고치면 같은 화면에서 다시 시도할 수 있습니다." : "읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요."}</p>`;
   if (applyButton) applyButton.disabled = !capturedHoldings.length;
 }
 
@@ -203,6 +204,33 @@ function money(value, currency, options = {}) {
   const usd = `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (options.dual === false || !fxRate()) return usd;
   return `${usd} · 약 ${Math.round(amount * fxRate()).toLocaleString("ko-KR")}원`;
+}
+
+function shortMoney(value, currency) {
+  const amount = Number(value || 0);
+  if (currency === "KRW") return `${Math.round(amount).toLocaleString("ko-KR")}원`;
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function krwApprox(value, currency) {
+  const amount = Number(value || 0);
+  if (!amount) return "";
+  const krw = currency === "KRW" ? amount : amount * (fxRate() || 0);
+  return krw ? `약 ${Math.round(krw).toLocaleString("ko-KR")}원` : "";
+}
+
+function friendlyWarning(message = "") {
+  const lowered = String(message).toLowerCase();
+  if (/quota|billing|insufficient|limit|usage|plan/.test(lowered)) {
+    return "AI 이미지 분석 한도 또는 결제 설정 문제입니다. 코드 고장이라기보다 OpenAI/Gemini 계정에서 사용량 한도가 막힌 상태예요.";
+  }
+  if (/api key|invalid|unauthorized/.test(lowered)) {
+    return "AI API 키가 없거나 잘못되었습니다. Cloudflare Pages 환경 변수의 키를 확인해야 합니다.";
+  }
+  if (/timeout|timed out/.test(lowered)) {
+    return "AI 응답 시간이 길어져 중단되었습니다. 이미지를 조금 더 작게 다시 올려보세요.";
+  }
+  return String(message || "캡처 분석을 완료하지 못했습니다.");
 }
 
 function planText(item) {
@@ -542,7 +570,10 @@ function renderDashboard() {
   $("#syncState").textContent = snapshot.usd_krw_rate ? `환율 ${Math.round(snapshot.usd_krw_rate).toLocaleString("ko-KR")}원` : "연결됨";
   $("#holdingCards").innerHTML = snapshot.holdings.map((item) => {
     const change = item.change_pct === null || item.change_pct === undefined ? "-" : `${item.change >= 0 ? "+" : ""}${item.change_pct.toFixed(2)}%`;
-    const profit = item.cost ? `${money(item.profit, item.currency)} / ${item.profit_pct.toFixed(2)}%` : "-";
+    const profit = item.cost ? `${item.profit_pct.toFixed(2)}%` : "-";
+    const valueText = item.value ? `${krwApprox(item.value, item.currency) || shortMoney(item.value, item.currency)}` : "-";
+    const avgText = item.average_price ? shortMoney(item.average_price, item.average_price_currency || item.currency) : "-";
+    const priceMeta = item.error ? "" : krwApprox(item.close, item.currency);
     return `
       <article class="holding-card">
         <div class="holding-main">
@@ -550,13 +581,13 @@ function renderDashboard() {
           <span class="pill">${item.date || "가격 조회"}</span>
         </div>
         <div class="price-line">
-          <b>${item.error ? "조회 실패" : money(item.close, item.currency)}</b>
+          <div class="price-stack"><b>${item.error ? "조회 실패" : shortMoney(item.close, item.currency)}</b>${priceMeta ? `<small>${priceMeta}</small>` : ""}</div>
           <span class="${item.change >= 0 ? "positive" : "negative"}">${item.error || change}</span>
         </div>
         <dl>
           <div><dt>수량</dt><dd>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 6 })}</dd></div>
-          <div><dt>평단</dt><dd>${item.average_price ? money(item.average_price, item.average_price_currency || item.currency) : "-"}</dd></div>
-          <div><dt>평가액</dt><dd>${item.value ? money(item.value, item.currency) : "-"}</dd></div>
+          <div><dt>평단</dt><dd>${avgText}</dd></div>
+          <div><dt>평가액</dt><dd>${valueText}</dd></div>
           <div><dt>손익</dt><dd>${profit}</dd></div>
         </dl>
         <p class="plan-chip">${planText(item)}${item.plan?.enabled && item.plan_estimated_shares ? ` · 예상 ${item.plan_estimated_shares.toFixed(6)}주` : ""}</p>

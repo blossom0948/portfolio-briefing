@@ -1506,7 +1506,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
             )
             data = response.json()
             if response.status_code >= 400:
-                return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [data.get("error", {}).get("message") or response.text]}
+                return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [friendly_ai_error(data.get("error", {}).get("message") or response.text)]}
             text = data.get("output_text") or ""
             if not text:
                 chunks = []
@@ -1517,7 +1517,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
                 text = "\n".join(chunks)
             return normalize_capture_result(parse_json_block(text))
         except Exception as exc:
-            return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [str(exc)]}
+            return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [friendly_ai_error(str(exc))]}
     return {
         "summary": "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
         "holdings": [],

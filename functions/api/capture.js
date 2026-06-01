@@ -4,6 +4,20 @@ function providerProblem(message = "") {
   return /quota|billing|insufficient|rate limit|api key|invalid|timeout|timed out/i.test(message);
 }
 
+function friendlyProviderMessage(message = "") {
+  const lowered = String(message).toLowerCase();
+  if (/quota|billing|insufficient|limit|usage|plan/.test(lowered)) {
+    return "AI 이미지 분석 한도 또는 결제 설정 문제입니다. 코드 고장이라기보다 AI 계정에서 현재 사용량이 막힌 상태입니다.";
+  }
+  if (/api key|invalid|unauthorized/.test(lowered)) {
+    return "AI API 키가 없거나 잘못되었습니다. Cloudflare Pages 환경 변수에서 키를 확인해야 합니다.";
+  }
+  if (/timeout|timed out/.test(lowered)) {
+    return "AI 응답 시간이 길어져 중단되었습니다. 캡처 이미지를 조금 더 작게 다시 올려보세요.";
+  }
+  return "AI 이미지 분석에 실패했습니다. 잠시 뒤 다시 시도하거나 더 선명한 캡처를 올려주세요.";
+}
+
 function parseJsonText(text = "") {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
@@ -91,7 +105,7 @@ export async function onRequestPost({ request, env }) {
         return json(await askOpenAIVision(env, image, mimeType));
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ summary: "AI 이미지 분석 한도가 막혀 캡처를 읽지 못했습니다.", holdings: [], warnings: [error.message] });
+        return json({ summary: "AI 한도 문제로 캡처를 읽지 못했습니다.", holdings: [], warnings: [friendlyProviderMessage(error.message)] });
       }
     }
     if (env.GEMINI_API_KEY) {
@@ -99,7 +113,7 @@ export async function onRequestPost({ request, env }) {
         return json(await askGeminiVision(env, image, mimeType));
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ summary: "Gemini 이미지 분석 한도가 막혀 캡처를 읽지 못했습니다.", holdings: [], warnings: [error.message] });
+        return json({ summary: "Gemini 한도 문제로 캡처를 읽지 못했습니다.", holdings: [], warnings: [friendlyProviderMessage(error.message)] });
       }
     }
     return json({ summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.", holdings: [], warnings: ["OPENAI_API_KEY 또는 GEMINI_API_KEY를 Cloudflare Pages 환경 변수에 넣어야 합니다."] });
