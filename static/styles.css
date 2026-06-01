@@ -783,6 +783,18 @@ pre.answer {
   margin-top: 14px;
 }
 
+.discover-form .wide-row {
+  grid-column: 1 / -1;
+}
+
+.fraction-preview {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .discover-actions {
   display: flex;
   justify-content: flex-end;

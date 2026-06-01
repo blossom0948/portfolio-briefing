@@ -6,7 +6,7 @@ const defaults = {
 let portfolio = structuredClone(defaults);
 let snapshot = null;
 let lastBriefing = { text: "" };
-const discoverState = { category: "us", items: [], selected: null };
+const discoverState = { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 };
 const $ = (selector) => document.querySelector(selector);
 const days = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
 
@@ -40,6 +40,13 @@ async function requestJson(url, options) {
   }
 }
 
+function maybeLoadDiscovery() {
+  if (!$("#discoverResults") || discoverState.items.length || discoverState.loading) return;
+  loadDiscovery().catch(() => {
+    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
+  });
+}
+
 function showView(name) {
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   const nextView = document.querySelector(`#view-${name}`);
@@ -47,12 +54,13 @@ function showView(name) {
   nextView.classList.add("active");
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
   if (name === "pro") renderPro();
+  if (name === "manage") maybeLoadDiscovery();
 }
 
 document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
 
 function fxRate() {
-  return Number(snapshot?.usd_krw_rate || 0);
+  return Number(snapshot?.usd_krw_rate || discoverState.usd_krw_rate || 0);
 }
 
 function money(value, currency, options = {}) {
@@ -207,14 +215,39 @@ function renderDiscoverResults() {
 
 async function loadDiscovery(category = discoverState.category) {
   discoverState.category = category;
+  discoverState.loading = true;
   document.querySelectorAll(".discover-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.discoverCategory === category);
   });
   const query = $("#discoverSearch")?.value.trim() || "";
   if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목을 불러오는 중입니다...</p>";
-  const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
-  discoverState.items = data.items || [];
-  renderDiscoverResults();
+  try {
+    const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
+    discoverState.items = data.items || [];
+    discoverState.usd_krw_rate = Number(data.usd_krw_rate || discoverState.usd_krw_rate || 0);
+    renderDiscoverResults();
+  } finally {
+    discoverState.loading = false;
+  }
+}
+
+function updateDiscoverFractionPreview() {
+  const asset = discoverState.selected;
+  const preview = $("#discoverFractionPreview");
+  if (!asset || !preview) return;
+  const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
+  const price = Number($("#discoverPrice")?.value || 0);
+  const priceCurrency = $("#discoverPriceCurrency")?.value || quoteCurrency;
+  const amount = Number($("#discoverBuyAmount")?.value || 0);
+  const amountCurrency = $("#discoverBuyCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
+  const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
+  const amountQuote = convertAmount(amount, amountCurrency, quoteCurrency);
+  if (!priceQuote || !amountQuote) {
+    preview.textContent = "금액을 넣으면 예상 소수점 수량을 계산합니다.";
+    return;
+  }
+  const estimatedQuantity = amountQuote / priceQuote;
+  preview.textContent = `예상 ${estimatedQuantity.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주가 반영됩니다.`;
 }
 
 function openDiscoverAction(asset) {
@@ -242,6 +275,13 @@ function openDiscoverAction(asset) {
             <select id="discoverPriceCurrency">${currencyOptions(quoteCurrency, asset.market)}</select>
           </div>
         </label>
+        <label class="wide-row">소수점 구매 금액
+          <div class="inline-control">
+            <input id="discoverBuyAmount" type="number" step="0.01" min="0" placeholder="예: 10000">
+            <select id="discoverBuyCurrency">${currencyOptions("KRW", asset.market)}</select>
+          </div>
+          <span id="discoverFractionPreview" class="fraction-preview">금액을 넣으면 예상 소수점 수량을 계산합니다.</span>
+        </label>
         <label class="toggle"><input id="discoverPlanEnabled" type="checkbox"><span>주식 모으기 켜기</span></label>
         <label>모으기 금액
           <div class="inline-control">
@@ -257,6 +297,7 @@ function openDiscoverAction(asset) {
       </div>
     </article>
   `;
+  updateDiscoverFractionPreview();
 }
 
 async function saveDiscoverSelection() {
@@ -264,12 +305,18 @@ async function saveDiscoverSelection() {
   if (!asset) return;
   syncFromForms();
   const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
-  const quantity = Number($("#discoverQty")?.value || 0);
+  let quantity = Number($("#discoverQty")?.value || 0);
   const price = Number($("#discoverPrice")?.value || 0);
   const priceCurrency = $("#discoverPriceCurrency")?.value || quoteCurrency;
+  const buyAmount = Number($("#discoverBuyAmount")?.value || 0);
+  const buyCurrency = $("#discoverBuyCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
   const planEnabled = Boolean($("#discoverPlanEnabled")?.checked);
   const planAmount = Number($("#discoverPlanAmount")?.value || 0);
   const planCurrency = $("#discoverPlanCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
+  const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
+  if ((!quantity || quantity <= 0) && buyAmount > 0 && priceQuote > 0) {
+    quantity = convertAmount(buyAmount, buyCurrency, quoteCurrency) / priceQuote;
+  }
   let item = portfolio.holdings.find((holding) => holding.symbol === asset.symbol && holding.market === asset.market);
   if (!item) {
     item = {
@@ -288,7 +335,6 @@ async function saveDiscoverSelection() {
   if (quantity > 0 && price > 0) {
     const currentQty = Number(item.quantity || 0);
     const currentAvgQuote = convertAmount(Number(item.average_price || 0), item.average_price_currency || quoteCurrency, quoteCurrency);
-    const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
     const nextQty = currentQty + quantity;
     item.quantity = Number(nextQty.toFixed(8));
     item.average_price = Number((((currentQty * currentAvgQuote) + (quantity * priceQuote)) / nextQty).toFixed(4));
@@ -839,21 +885,24 @@ function renderPro() {
 
 async function loadAll() {
   $("#syncState").textContent = "불러오는 중";
-  const [config, snap, briefing] = await Promise.all([
+  const [config, snap] = await Promise.all([
     requestJson("/api/config"),
     requestJson("/api/snapshot"),
-    requestJson("/api/briefing"),
   ]);
   portfolio = config;
   snapshot = snap;
-  lastBriefing = briefing;
   renderDashboard();
   renderForms();
   renderBriefing();
-  renderPro();
-  loadDiscovery().catch(() => {
-    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
+  requestJson("/api/briefing").then((briefing) => {
+    lastBriefing = briefing;
+    renderBriefing();
+  }).catch(() => {
+    lastBriefing = { text: "저장된 브리핑을 불러오지 못했습니다. 메일 발송은 기존 스케줄대로 유지됩니다." };
+    renderBriefing();
   });
+  if ($("#view-pro")?.classList.contains("active")) renderPro();
+  if ($("#view-manage")?.classList.contains("active")) maybeLoadDiscovery();
   toast("최신 설정을 불러왔습니다.");
 }
 
@@ -914,6 +963,8 @@ $("#discoverAction")?.addEventListener("click", (event) => {
     saveDiscoverSelection().catch((error) => toast(`반영 실패: ${error.message}`));
   }
 });
+$("#discoverAction")?.addEventListener("input", updateDiscoverFractionPreview);
+$("#discoverAction")?.addEventListener("change", updateDiscoverFractionPreview);
 $("#exampleQuestionBtn").addEventListener("click", () => {
   $("#aiQuestion").value = "삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?";
 });
@@ -960,5 +1011,5 @@ loadAll().catch((error) => {
   toast(`초기 연결 실패: ${error.message}`);
   renderForms();
   renderBriefing();
-  renderPro();
+  if ($("#view-pro")?.classList.contains("active")) renderPro();
 });

@@ -2,13 +2,13 @@ const state = {
   portfolio: null,
   snapshot: null,
   briefing: "",
-  discover: { category: "us", items: [], selected: null },
+  discover: { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 },
 };
 
 const $ = (selector) => document.querySelector(selector);
 
 function fxRate() {
-  return Number(state.snapshot?.usd_krw_rate || 0);
+  return Number(state.snapshot?.usd_krw_rate || state.discover.usd_krw_rate || 0);
 }
 
 function money(value, currency, options = {}) {
@@ -216,14 +216,46 @@ function renderDiscoverResults() {
 
 async function loadDiscovery(category = state.discover.category) {
   state.discover.category = category;
+  state.discover.loading = true;
   document.querySelectorAll(".discover-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.discoverCategory === category);
   });
   const query = $("#discoverSearch")?.value.trim() || "";
   if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목을 불러오는 중입니다...</p>";
-  const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
-  state.discover.items = data.items || [];
-  renderDiscoverResults();
+  try {
+    const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
+    state.discover.items = data.items || [];
+    state.discover.usd_krw_rate = Number(data.usd_krw_rate || state.discover.usd_krw_rate || 0);
+    renderDiscoverResults();
+  } finally {
+    state.discover.loading = false;
+  }
+}
+
+function maybeLoadDiscovery() {
+  if (!$("#discoverResults") || state.discover.items.length || state.discover.loading) return;
+  loadDiscovery().catch(() => {
+    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
+  });
+}
+
+function updateDiscoverFractionPreview() {
+  const asset = state.discover.selected;
+  const preview = $("#discoverFractionPreview");
+  if (!asset || !preview) return;
+  const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
+  const price = Number($("#discoverPrice")?.value || 0);
+  const priceCurrency = $("#discoverPriceCurrency")?.value || quoteCurrency;
+  const amount = Number($("#discoverBuyAmount")?.value || 0);
+  const amountCurrency = $("#discoverBuyCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
+  const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
+  const amountQuote = convertAmount(amount, amountCurrency, quoteCurrency);
+  if (!priceQuote || !amountQuote) {
+    preview.textContent = "금액을 넣으면 예상 소수점 수량을 계산합니다.";
+    return;
+  }
+  const estimatedQuantity = amountQuote / priceQuote;
+  preview.textContent = `예상 ${estimatedQuantity.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주가 반영됩니다.`;
 }
 
 function openDiscoverAction(asset) {
@@ -250,6 +282,13 @@ function openDiscoverAction(asset) {
             <select id="discoverPriceCurrency">${currencyOptions(quoteCurrency, asset.market)}</select>
           </div>
         </label>
+        <label class="wide-row">소수점 구매 금액
+          <div class="inline-control">
+            <input id="discoverBuyAmount" type="number" step="0.01" min="0" placeholder="예: 10000">
+            <select id="discoverBuyCurrency">${currencyOptions("KRW", asset.market)}</select>
+          </div>
+          <span id="discoverFractionPreview" class="fraction-preview">금액을 넣으면 예상 소수점 수량을 계산합니다.</span>
+        </label>
         <label class="toggle"><input id="discoverPlanEnabled" type="checkbox"><span>주식 모으기 켜기</span></label>
         <label>모으기 금액
           <div class="inline-control">
@@ -265,18 +304,25 @@ function openDiscoverAction(asset) {
       </div>
     </article>
   `;
+  updateDiscoverFractionPreview();
 }
 
 async function saveDiscoverSelection() {
   const asset = state.discover.selected;
   if (!asset || !state.portfolio) return;
   const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
-  const quantity = Number($("#discoverQty")?.value || 0);
+  let quantity = Number($("#discoverQty")?.value || 0);
   const price = Number($("#discoverPrice")?.value || 0);
   const priceCurrency = $("#discoverPriceCurrency")?.value || quoteCurrency;
+  const buyAmount = Number($("#discoverBuyAmount")?.value || 0);
+  const buyCurrency = $("#discoverBuyCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
   const planEnabled = Boolean($("#discoverPlanEnabled")?.checked);
   const planAmount = Number($("#discoverPlanAmount")?.value || 0);
   const planCurrency = $("#discoverPlanCurrency")?.value || "KRW";
+  const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
+  if ((!quantity || quantity <= 0) && buyAmount > 0 && priceQuote > 0) {
+    quantity = convertAmount(buyAmount, buyCurrency, quoteCurrency) / priceQuote;
+  }
   let item = state.portfolio.holdings.find((holding) => holding.symbol === asset.symbol && holding.market === asset.market);
   if (!item) {
     item = {
@@ -295,7 +341,6 @@ async function saveDiscoverSelection() {
   if (quantity > 0 && price > 0) {
     const currentQty = Number(item.quantity || 0);
     const currentAvgQuote = convertAmount(Number(item.average_price || 0), item.average_price_currency || quoteCurrency, quoteCurrency);
-    const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
     const nextQty = currentQty + quantity;
     item.quantity = Number(nextQty.toFixed(8));
     item.average_price = Number((((currentQty * currentAvgQuote) + (quantity * priceQuote)) / nextQty).toFixed(4));
@@ -451,6 +496,7 @@ function showView(name) {
     item.classList.toggle("active", item.dataset.view === name);
   });
   if (name === "pro") renderPro();
+  if (name === "manage") maybeLoadDiscovery();
 }
 
 const proState = {
@@ -842,27 +888,39 @@ function renderPro() {
   });
 }
 
+async function loadSecondaryContent() {
+  const newsTask = requestJson("/api/news").then((news) => {
+    renderNews(news);
+  }).catch(() => {
+    $("#domesticNews").innerHTML = "<p class=\"muted\">뉴스를 불러오지 못했습니다.</p>";
+    $("#overseasNews").innerHTML = "<p class=\"muted\">뉴스를 불러오지 못했습니다.</p>";
+  });
+  const briefingTask = requestJson("/api/briefing").then((briefing) => {
+    state.briefing = briefing.text;
+    $("#briefingText").textContent = briefing.text;
+  }).catch(() => {
+    $("#briefingText").textContent = "저장된 브리핑을 불러오지 못했습니다. 메일 발송은 기존 스케줄대로 유지됩니다.";
+  });
+  await Promise.allSettled([newsTask, briefingTask]);
+}
+
 async function loadAll() {
   $("#briefingText").textContent = "불러오는 중...";
-  const [portfolio, snapshot, news, briefing] = await Promise.all([
+  const [portfolio, snapshot] = await Promise.all([
     requestJson("/api/portfolio"),
     requestJson("/api/snapshot"),
-    requestJson("/api/news"),
-    requestJson("/api/briefing"),
   ]);
   state.portfolio = portfolio;
-  state.briefing = briefing.text;
   renderSnapshot(snapshot);
   renderSelectors(portfolio);
   renderPlanList(portfolio);
-  renderNews(news);
+  $("#domesticNews").innerHTML = "<p class=\"muted\">뉴스를 불러오는 중입니다...</p>";
+  $("#overseasNews").innerHTML = "<p class=\"muted\">뉴스를 불러오는 중입니다...</p>";
   renderBriefHighlights(snapshot);
   fillSettings(portfolio);
-  $("#briefingText").textContent = briefing.text;
-  renderPro();
-  loadDiscovery().catch(() => {
-    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
-  });
+  loadSecondaryContent();
+  if ($("#view-pro")?.classList.contains("active")) renderPro();
+  if ($("#view-manage")?.classList.contains("active")) maybeLoadDiscovery();
 }
 
 document.querySelectorAll(".nav-item").forEach((item) => {
@@ -978,6 +1036,8 @@ $("#discoverAction")?.addEventListener("click", (event) => {
     saveDiscoverSelection().catch((error) => toast(`반영 실패: ${error.message}`));
   }
 });
+$("#discoverAction")?.addEventListener("input", updateDiscoverFractionPreview);
+$("#discoverAction")?.addEventListener("change", updateDiscoverFractionPreview);
 
 $("#settingsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1041,5 +1101,5 @@ $("#tradeForm").date.valueAsDate = new Date();
 loadAll().catch((error) => {
   $("#briefingText").textContent = `초기 로딩 실패: ${error.message}`;
   toast("초기 로딩에 실패했습니다.");
-  renderPro();
+  if ($("#view-pro")?.classList.contains("active")) renderPro();
 });

@@ -20,6 +20,8 @@
     hue: 210,
     startedAt: performance.now(),
   };
+  let animationFrame = null;
+  let animationActive = false;
 
   function money(value, currency) {
     const amount = Number(value || 0);
@@ -253,7 +255,21 @@
       ctx.fill();
     }
 
-    requestAnimationFrame(draw);
+    if (animationActive) animationFrame = requestAnimationFrame(draw);
+  }
+
+  function startDraw() {
+    if (animationActive) return;
+    animationActive = true;
+    animationFrame = requestAnimationFrame(draw);
+  }
+
+  function stopDraw() {
+    animationActive = false;
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
   }
 
   function showApp(view = "dashboard") {
@@ -265,6 +281,7 @@
     window.setTimeout(() => {
       landingPage.hidden = true;
       landingPage.classList.remove("landing-exit");
+      stopDraw();
     }, 260);
     if (typeof window.showView === "function") {
       window.showView(view);
@@ -276,6 +293,7 @@
 
   function showLanding() {
     landingPage.hidden = false;
+    startDraw();
     landingPage.classList.remove("landing-exit");
     landingPage.classList.add("landing-return");
     appShell.classList.add("app-shell-exit");
@@ -298,7 +316,7 @@
 
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
-  requestAnimationFrame(draw);
+  startDraw();
 
   loadPortfolio().then((portfolio) => renderStockButtons(portfolio.holdings)).catch(() => renderStockButtons(fallbackHoldings));
 
