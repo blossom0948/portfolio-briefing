@@ -770,20 +770,22 @@ def summarize_news_item(item: dict[str, str]) -> dict[str, str]:
     body, resolved_link = extract_article_text(item.get("link", ""))
     translated_body = translate_text(body)
     title = item.get("title_ko") or translate_title(item.get("title", ""))
-    sentences = pick_key_sentences(translated_body, title, 3)
+    sentences = pick_key_sentences(translated_body, title, 4)
     if sentences:
         easy_sentences = [make_easy_sentence(sentence) for sentence in sentences]
+        detail = " ".join(easy_sentences[1:3]) if len(easy_sentences) > 1 else easy_sentences[0]
         summary = [
-            f"핵심 내용: {easy_sentences[0]}",
-            *[f"조금 더 보면: {sentence}" for sentence in easy_sentences[1:]],
-            simple_news_context(item, sentences),
-            portfolio_connection(item),
+            f"무슨 일: {easy_sentences[0]}",
+            f"왜 중요: {detail}",
+            f"쉽게 말하면: {simple_news_context(item, sentences).replace('쉽게 말하면, ', '')}",
+            f"내 포트폴리오 영향: {portfolio_connection(item)}",
         ]
     else:
         summary = [
-            f"원문 본문을 자동으로 충분히 읽지는 못했지만, 제목 기준으로는 '{title}'에 관한 뉴스입니다.",
-            simple_news_context(item, []),
-            portfolio_connection(item),
+            f"무슨 일: '{title}'에 관한 뉴스입니다.",
+            f"왜 중요: 원문 본문을 충분히 읽지 못했지만 제목상 내 보유 종목과 관련된 시장 흐름입니다.",
+            f"쉽게 말하면: {simple_news_context(item, []).replace('쉽게 말하면, ', '')}",
+            f"내 포트폴리오 영향: {portfolio_connection(item)}",
         ]
     return {
         **item,
@@ -868,21 +870,58 @@ def format_change(item: dict[str, Any]) -> str:
     return f"{format_money(item['close'], item['currency'])} ({change}, {pct})"
 
 
-def action_notes(snapshot: dict[str, Any]) -> list[str]:
+def news_tone(news_items: list[dict[str, str]]) -> tuple[int, int]:
+    combined = " ".join(f"{item.get('title_ko', '')} {item.get('summary', '')}" for item in news_items).lower()
+    positive_terms = ["상승", "강세", "개선", "호실적", "성장", "수혜", "기대", "반등", "돌파", "완화"]
+    caution_terms = ["하락", "약세", "부진", "우려", "위험", "리스크", "둔화", "관세", "규제", "경고"]
+    positive = sum(1 for term in positive_terms if term in combined)
+    caution = sum(1 for term in caution_terms if term in combined)
+    return positive, caution
+
+
+def action_notes(snapshot: dict[str, Any], news_items: list[dict[str, str]] | None = None) -> list[str]:
     notes = []
+    news_items = news_items or []
+    positive_news, caution_news = news_tone(news_items)
+    holdings = [item for item in snapshot["holdings"] if not item.get("error")]
     samsung = next((h for h in snapshot["holdings"] if h.get("symbol") == "005930"), None)
     qqqm = next((h for h in snapshot["holdings"] if h.get("symbol") == "QQQM"), None)
+    voo = next((h for h in snapshot["holdings"] if h.get("symbol") == "VOO"), None)
+    biggest_move = max(
+        (item for item in holdings if item.get("change_pct") is not None),
+        key=lambda item: abs(float(item.get("change_pct") or 0)),
+        default=None,
+    )
+
+    if biggest_move and abs(float(biggest_move.get("change_pct") or 0)) >= 3:
+        direction = "올랐습니다" if biggest_move["change_pct"] > 0 else "내렸습니다"
+        notes.append(f"{biggest_move['name']}가 오늘 {biggest_move['change_pct']}% {direction}. 새 매수보다 왜 움직였는지 뉴스와 거래량을 먼저 확인하세요.")
+    elif holdings:
+        notes.append("오늘 가격 변동은 아주 크지 않습니다. 성급하게 바꾸기보다 기존 적립 계획을 유지해도 되는 날입니다.")
+
     if samsung and samsung.get("change_pct") is not None and samsung["change_pct"] > 3:
-        notes.append("삼성전자는 급등 뒤 구간입니다. 오늘은 추격매수보다 수급과 HBM 뉴스를 확인하세요.")
+        notes.append("삼성전자는 급등 뒤 구간입니다. 추격매수보다 HBM, 반도체 수요, 외국인 수급을 확인하세요.")
+    elif samsung and samsung.get("change_pct") is not None and samsung["change_pct"] < -3:
+        notes.append("삼성전자는 하락폭이 커졌습니다. 손절 판단보다 실적 이슈인지 시장 전체 하락인지 먼저 나눠 보세요.")
     else:
-        notes.append("삼성전자는 보유 관점으로 보되, 외국인 수급 변화를 우선 확인하세요.")
+        notes.append("삼성전자는 보유 관점으로 보되, 외국인 수급과 반도체 뉴스가 같은 방향인지 확인하세요.")
+
     if qqqm and qqqm.get("value", 0) > snapshot["totals"].get("USD", 0) * 0.6:
         notes.append("QQQM 비중이 높습니다. 기술주 쏠림을 줄이고 싶다면 VOO 비중을 함께 점검하세요.")
+    elif qqqm and voo:
+        notes.append("QQQM은 성장주, VOO는 미국 전체 시장에 가깝습니다. 오늘 미국 뉴스가 기술주 중심이면 QQQM 변동을 더 크게 보세요.")
+
+    if caution_news > positive_news:
+        notes.append("오늘 뉴스에는 주의 신호가 더 많습니다. 추가매수는 금액을 줄이거나 내일 가격을 한 번 더 보고 결정하세요.")
+    elif positive_news > caution_news:
+        notes.append("오늘 뉴스 톤은 비교적 긍정적입니다. 그래도 한 번에 사기보다 정해둔 적립 금액 안에서만 움직이세요.")
     else:
-        notes.append("QQQM과 VOO는 둘 다 미국 대형주 노출입니다. 신규 매수 전 기술주 과열 여부를 확인하세요.")
+        notes.append("뉴스 톤은 한쪽으로 강하게 기울지 않았습니다. 가격보다 계획과 비중을 우선 기준으로 삼으세요.")
+
     if snapshot.get("active_plans"):
         notes.append(f"주식 모으기 {snapshot['active_plans']}개가 켜져 있습니다. 이번 주 예정 금액과 현금 여력을 확인하세요.")
-    notes.append("오늘 결론은 보유 우선, 추가매수는 분할로 접근입니다.")
+    else:
+        notes.append("켜진 주식 모으기가 없습니다. 매번 고민을 줄이려면 종목별 자동 적립 금액을 먼저 정하세요.")
     return notes
 
 
@@ -928,7 +967,7 @@ def build_briefing_text() -> str:
     else:
         lines.append("- 오늘자(KST 기준)로 확인된 관련 뉴스가 없습니다. 오래된 기사는 제외했습니다.")
     lines.extend(["", "그래서 오늘 해야 할 것"])
-    lines.extend(f"- {note}" for note in action_notes(snapshot))
+    lines.extend(f"- {note}" for note in action_notes(snapshot, today_news))
     return "\n".join(lines)
 
 
@@ -944,10 +983,9 @@ def ask_ai(question: str) -> str:
     if not question:
         return "질문을 입력하세요."
     snapshot = get_portfolio_snapshot()
-    briefing = build_briefing_text()
     context = {
         "snapshot": snapshot,
-        "briefing": briefing,
+        "today_actions": action_notes(snapshot),
     }
     prompt = (
         "너는 개인 포트폴리오 분석 도우미다. 한국어로 답하고, 투자 판단을 단정하지 말고 "
@@ -959,12 +997,12 @@ def ask_ai(question: str) -> str:
 
     if os.environ.get("OPENAI_API_KEY"):
         answer = ask_openai(prompt)
-        if "quota" not in answer.lower() and "billing" not in answer.lower():
+        if not is_ai_provider_error(answer):
             return answer
         return local_projection_answer(question, snapshot, answer)
     if os.environ.get("GEMINI_API_KEY"):
         answer = ask_gemini(prompt)
-        if "quota" not in answer.lower() and "할당량" not in answer:
+        if not is_ai_provider_error(answer):
             return answer
         return local_projection_answer(question, snapshot, answer)
     return local_projection_answer(
@@ -978,8 +1016,7 @@ def ask_ai(question: str) -> str:
 
 def local_projection_answer(question: str, snapshot: dict[str, Any], reason: str) -> str:
     lowered = question.lower()
-    is_quota_fallback = "quota" in reason.lower() or "billing" in reason.lower() or "할당량" in reason
-    if not is_quota_fallback and not any(word in question for word in ["1년", "일년", "12개월", "모으면", "매주", "매월", "얼마"]):
+    if not is_ai_provider_error(reason) and not any(word in question for word in ["1년", "일년", "12개월", "모으면", "매주", "매월", "얼마", "리스크", "위험", "해야"]):
         return reason
 
     candidates = []
@@ -995,7 +1032,8 @@ def local_projection_answer(question: str, snapshot: dict[str, Any], reason: str
         candidates = [item for item in snapshot.get("holdings", []) if not item.get("error")]
 
     lines = [
-        "AI quota가 막혀 있어서 내장 계산 모드로 답합니다.",
+        "외부 AI 호출이 막혀서 Briefolio 내장 분석 모드로 답합니다.",
+        f"원인: {friendly_ai_error(reason)}",
         "",
         "1년 적립 시뮬레이션",
     ]
@@ -1023,30 +1061,64 @@ def local_projection_answer(question: str, snapshot: dict[str, Any], reason: str
                 f"  단순 시나리오: -20% {format_money(down, item['currency'])} / 0% {format_money(flat, item['currency'])} / +20% {format_money(up, item['currency'])}",
             ]
         )
-    if len(lines) == 3:
+    if len(lines) == 4:
         lines.append("계산할 적립 금액이 없습니다. 주식 모으기 금액을 먼저 설정해 주세요.")
-    lines.extend(["", "정확한 수익은 실제 매수 시점별 가격, 환율, 세금, 수수료에 따라 달라집니다."])
+    lines.extend(["", *[f"오늘 체크: {note}" for note in action_notes(snapshot)[:3]]])
+    lines.append("정확한 수익은 실제 매수 시점별 가격, 환율, 세금, 수수료에 따라 달라집니다.")
     return "\n".join(lines)
 
 
+def is_ai_provider_error(message: str) -> bool:
+    lowered = (message or "").lower()
+    markers = [
+        "quota",
+        "billing",
+        "insufficient",
+        "rate limit",
+        "api key",
+        "invalid",
+        "timeout",
+        "timed out",
+        "할당량",
+        "결제",
+        "호출 실패",
+    ]
+    return any(marker in lowered or marker in message for marker in markers)
+
+
+def friendly_ai_error(message: str) -> str:
+    lowered = (message or "").lower()
+    if "quota" in lowered or "billing" in lowered or "insufficient" in lowered:
+        return "OpenAI 계정의 사용량 한도 또는 결제 설정 문제입니다. 코드 문제가 아니라 계정에서 크레딧/결제를 켜야 외부 AI가 동작합니다."
+    if "api key" in lowered or "invalid" in lowered:
+        return "AI API 키가 없거나 잘못되었습니다. Cloudflare Pages와 로컬 .env에 같은 키가 들어가야 합니다."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "AI 응답이 너무 오래 걸렸습니다. 앱은 자동으로 내장 분석 답변으로 전환했습니다."
+    return "외부 AI 제공자가 일시적으로 응답하지 않았습니다."
+
+
 def ask_openai(prompt: str) -> str:
-    model = os.environ.get("OPENAI_MODEL", "gpt-5.2")
-    response = requests.post(
-        "https://api.openai.com/v1/responses",
-        headers={
-            "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": model,
-            "input": prompt,
-        },
-        timeout=60,
-    )
-    data = response.json()
-    if response.status_code >= 400:
-        message = data.get("error", {}).get("message") or response.text
-        return f"OpenAI 호출 실패: {message}"
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/responses",
+            headers={
+                "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "input": prompt,
+                "max_output_tokens": 900,
+            },
+            timeout=20,
+        )
+        data = response.json()
+        if response.status_code >= 400:
+            message = data.get("error", {}).get("message") or response.text
+            return f"OpenAI 호출 실패: {message}"
+    except requests.RequestException as exc:
+        return f"OpenAI 호출 실패: {exc}"
     if data.get("output_text"):
         return data["output_text"]
     chunks = []
@@ -1060,19 +1132,22 @@ def ask_openai(prompt: str) -> str:
 def ask_gemini(prompt: str) -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    response = requests.post(
-        url,
-        params={"key": os.environ["GEMINI_API_KEY"]},
-        json={
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1200},
-        },
-        timeout=60,
-    )
-    data = response.json()
-    if response.status_code >= 400:
-        message = data.get("error", {}).get("message") or response.text
-        return f"Gemini 호출 실패: {message}"
+    try:
+        response = requests.post(
+            url,
+            params={"key": os.environ["GEMINI_API_KEY"]},
+            json={
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1200},
+            },
+            timeout=20,
+        )
+        data = response.json()
+        if response.status_code >= 400:
+            message = data.get("error", {}).get("message") or response.text
+            return f"Gemini 호출 실패: {message}"
+    except requests.RequestException as exc:
+        return f"Gemini 호출 실패: {exc}"
     candidates = data.get("candidates") or []
     parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
     return "".join(part.get("text", "") for part in parts).strip() or "AI 응답을 읽지 못했습니다."

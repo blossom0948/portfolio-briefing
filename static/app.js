@@ -540,7 +540,7 @@ async function askProAi() {
     $("#proAiAnswer").textContent = "질문을 입력해주세요.";
     return;
   }
-  $("#proAiAnswer").textContent = "AI가 포트폴리오와 브리핑을 읽는 중입니다...";
+  $("#proAiAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
   const context = currentHoldings().map((item) => `${item.name} ${item.symbol}: 현재가 ${money(item.close, item.currency)}, 오늘 ${item.change_pct ?? "-"}%, 수량 ${item.quantity || 0}`).join("\n");
   try {
     const result = await requestJson("/api/ai", {
@@ -551,7 +551,7 @@ async function askProAi() {
     });
     $("#proAiAnswer").textContent = result.answer;
   } catch (error) {
-    $("#proAiAnswer").textContent = `AI 호출은 실패했습니다. 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
+    $("#proAiAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
   }
 }
 
@@ -706,7 +706,7 @@ $("#askAiBtn").addEventListener("click", async () => {
     $("#aiAnswer").textContent = "질문을 입력하세요.";
     return;
   }
-  $("#aiAnswer").textContent = "AI가 포트폴리오와 브리핑을 읽고 계산하는 중입니다...";
+  $("#aiAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
   try {
     const result = await requestJson("/api/ai", {
       method: "POST",
@@ -716,7 +716,7 @@ $("#askAiBtn").addEventListener("click", async () => {
     });
     $("#aiAnswer").textContent = result.answer;
   } catch (error) {
-    $("#aiAnswer").textContent = `AI 호출은 실패했습니다. 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
+    $("#aiAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
   }
 });
 

@@ -908,36 +908,37 @@ button:hover {
 
 :root {
   color-scheme: dark;
-  --bg: #05070a;
-  --surface: rgba(255, 255, 255, 0.16);
-  --soft: rgba(255, 255, 255, 0.10);
-  --text: #f7fbff;
-  --muted: rgba(238, 244, 255, 0.68);
-  --line: rgba(255, 255, 255, 0.24);
-  --nav: rgba(8, 12, 18, 0.62);
-  --accent: #98f5c2;
-  --accent-dark: #8ce8ff;
-  --green: #8af5a5;
-  --red: #ff9588;
-  --amber: #ffd27a;
-  --glass-bg: rgba(255, 255, 255, 0.12);
-  --glass-bg-strong: rgba(255, 255, 255, 0.16);
-  --glass-bg-soft: rgba(255, 255, 255, 0.07);
-  --glass-border: rgba(255, 255, 255, 0.28);
-  --glass-border-top: rgba(255, 255, 255, 0.48);
-  --glass-inset-light: rgba(255, 255, 255, 0.26);
-  --glass-inset-dark: rgba(0, 0, 0, 0.18);
-  --glass-shadow: 0 18px 56px rgba(0, 0, 0, 0.34);
-  --glass-radius: 24px;
+  --bg: #000000;
+  --surface: rgba(28, 28, 30, 0.94);
+  --soft: rgba(44, 44, 46, 0.82);
+  --text: #f5f5f7;
+  --muted: rgba(235, 235, 245, 0.72);
+  --line: rgba(235, 235, 245, 0.18);
+  --nav: rgba(18, 18, 20, 0.88);
+  --accent: #30d158;
+  --accent-dark: #64d2ff;
+  --green: #30d158;
+  --red: #ff453a;
+  --amber: #ffd60a;
+  --glass-bg: rgba(28, 28, 30, 0.82);
+  --glass-bg-strong: rgba(44, 44, 46, 0.90);
+  --glass-bg-soft: rgba(58, 58, 60, 0.56);
+  --glass-border: rgba(235, 235, 245, 0.16);
+  --glass-border-top: rgba(255, 255, 255, 0.30);
+  --glass-inset-light: rgba(255, 255, 255, 0.16);
+  --glass-inset-dark: rgba(0, 0, 0, 0.34);
+  --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.46);
+  --glass-radius: 22px;
   --shadow: var(--glass-shadow);
 }
 
 body {
   min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Noto Sans KR", sans-serif;
   background:
-    radial-gradient(circle at 18% 12%, rgba(116, 241, 192, 0.16), transparent 34%),
-    radial-gradient(circle at 84% 18%, rgba(72, 160, 255, 0.18), transparent 32%),
-    linear-gradient(135deg, #05070a 0%, #0c1119 48%, #11100f 100%);
+    radial-gradient(circle at 16% 10%, rgba(48, 209, 88, 0.10), transparent 32%),
+    radial-gradient(circle at 86% 6%, rgba(10, 132, 255, 0.12), transparent 34%),
+    linear-gradient(145deg, #000000 0%, #111113 52%, #1c1c1e 100%);
   color: var(--text);
 }
 
@@ -1001,13 +1002,13 @@ body {
 .app-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 12% 10%, rgba(119, 244, 196, 0.14), transparent 30%),
-    radial-gradient(circle at 90% 6%, rgba(112, 178, 255, 0.16), transparent 32%),
-    linear-gradient(145deg, #05070a 0%, #0b1018 58%, #15120f 100%);
+    radial-gradient(circle at 12% 10%, rgba(48, 209, 88, 0.08), transparent 30%),
+    radial-gradient(circle at 90% 6%, rgba(10, 132, 255, 0.10), transparent 34%),
+    linear-gradient(145deg, #000000 0%, #111113 56%, #1c1c1e 100%);
 }
 
 .sidebar {
-  background: rgba(7, 11, 17, 0.68);
+  background: rgba(18, 18, 20, 0.90);
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-right: 1px solid rgba(255,255,255,0.18);
@@ -1033,8 +1034,8 @@ body {
 
 .nav-item.active,
 .nav-item:hover {
-  border-color: rgba(255,255,255,0.28);
-  background: rgba(255,255,255,0.13);
+  border-color: rgba(235,235,245,0.20);
+  background: rgba(58,58,60,0.78);
   color: #ffffff;
   box-shadow: inset 1px 1px 1px rgba(255,255,255,0.18);
 }
@@ -1045,8 +1046,8 @@ main {
 
 .hero {
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05)),
-    radial-gradient(circle at 12% 0%, rgba(152,245,194,0.16), transparent 38%);
+    linear-gradient(135deg, rgba(44,44,46,0.92), rgba(28,28,30,0.76)),
+    radial-gradient(circle at 12% 0%, rgba(48,209,88,0.12), transparent 38%);
 }
 
 .eyebrow {
@@ -1069,12 +1070,12 @@ label,
 small,
 .plan-chip,
 dt {
-  color: var(--muted);
+  color: rgba(235, 235, 245, 0.74);
 }
 
 button {
-  border-color: rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.09);
+  border-color: rgba(235,235,245,0.16);
+  background: rgba(58,58,60,0.72);
   color: #ffffff;
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
@@ -1083,14 +1084,14 @@ button {
 }
 
 button:hover {
-  border-color: rgba(255,255,255,0.36);
-  background: rgba(255,255,255,0.14);
+  border-color: rgba(235,235,245,0.26);
+  background: rgba(72,72,74,0.86);
 }
 
 button.primary {
-  border-color: rgba(152,245,194,0.86);
-  background: rgba(152,245,194,0.92);
-  color: #05110c;
+  border-color: rgba(48,209,88,0.95);
+  background: rgba(48,209,88,0.95);
+  color: #031007;
 }
 
 .metrics {
@@ -1108,7 +1109,7 @@ button.primary {
 
 .holding-card,
 .panel {
-  background: rgba(255,255,255,0.10);
+  background: rgba(28,28,30,0.86);
 }
 
 .holding-card {
@@ -1125,8 +1126,8 @@ button.primary {
 input,
 select,
 textarea {
-  border-color: rgba(255,255,255,0.20);
-  background: rgba(255,255,255,0.08);
+  border-color: rgba(235,235,245,0.16);
+  background: rgba(44,44,46,0.88);
   color: #ffffff;
   border-radius: 16px;
   box-shadow: inset 1px 1px 2px rgba(255,255,255,0.14), inset -1px -1px 2px rgba(0,0,0,0.16);
@@ -1134,7 +1135,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: rgba(255,255,255,0.42);
+  color: rgba(235,235,245,0.42);
 }
 
 select option {
@@ -1143,7 +1144,7 @@ select option {
 
 .plan-row,
 .holding-form-card {
-  background: rgba(255,255,255,0.07);
+  background: rgba(44,44,46,0.72);
 }
 
 .news-item {
@@ -1165,20 +1166,20 @@ select option {
 .journal-list article,
 .scenario-grid article,
 .chip-list span {
-  background: rgba(255,255,255,0.07);
-  border-color: rgba(255,255,255,0.18);
+  background: rgba(44,44,46,0.78);
+  border-color: rgba(235,235,245,0.16);
 }
 
 .score-ring::after {
-  background: rgba(6, 10, 15, 0.84);
+  background: rgba(18, 18, 20, 0.96);
   box-shadow: inset 1px 1px 2px rgba(255,255,255,0.12), inset -1px -1px 2px rgba(0,0,0,0.32);
 }
 
 .pro-tab.active,
 .event-list > article > span {
-  border-color: rgba(152,245,194,0.82);
-  background: rgba(152,245,194,0.92);
-  color: #05110c;
+  border-color: rgba(48,209,88,0.95);
+  background: rgba(48,209,88,0.95);
+  color: #031007;
 }
 
 .impact-score {
@@ -1186,17 +1187,17 @@ select option {
 }
 
 pre {
-  background: rgba(4, 8, 13, 0.58);
-  border: 1px solid rgba(255,255,255,0.18);
-  color: rgba(255,255,255,0.9);
+  background: rgba(18, 18, 20, 0.94);
+  border: 1px solid rgba(235,235,245,0.16);
+  color: rgba(245,245,247,0.94);
   border-radius: 18px;
   box-shadow: inset 1px 1px 2px rgba(255,255,255,0.12), inset -1px -1px 2px rgba(0,0,0,0.28);
 }
 
 pre.answer {
-  background: rgba(255,255,255,0.10);
-  color: rgba(255,255,255,0.9);
-  border-color: rgba(255,255,255,0.2);
+  background: rgba(28,28,30,0.96);
+  color: rgba(245,245,247,0.95);
+  border-color: rgba(235,235,245,0.18);
 }
 
 #toast {

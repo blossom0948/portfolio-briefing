@@ -196,8 +196,9 @@ export function localProjection(question, snapshot, prefix = "") {
   const target = candidates.find((item) => question.includes(item.name) || question.toLowerCase().includes(String(item.symbol).toLowerCase()));
   const list = target ? [target] : candidates;
   const lines = [];
-  if (prefix) lines.push(prefix, "");
-  lines.push("내장 계산 모드로 답합니다.", "", "1년 적립 시뮬레이션");
+  if (prefix) lines.push("외부 AI 호출이 막혀서 Briefolio 내장 분석 모드로 답합니다.", `원인: ${prefix}`, "");
+  else lines.push("Briefolio 내장 분석 모드로 답합니다.", "");
+  lines.push("1년 적립 시뮬레이션");
   for (const item of list) {
     let amount = Number(item.plan?.amount || 0);
     if (question.includes("만원") && item.currency === "KRW") amount = 10000;
@@ -212,6 +213,9 @@ export function localProjection(question, snapshot, prefix = "") {
       `  현재가 기준 예상 수량: ${shares.toFixed(6)}주`,
       `  시나리오: -20% ${formatMoney(total * 0.8, item.currency)} / 0% ${formatMoney(total, item.currency)} / +20% ${formatMoney(total * 1.2, item.currency)}`
     );
+  }
+  if (lines.length <= (prefix ? 4 : 3)) {
+    lines.push("계산할 적립 금액이 없습니다. 주식 모으기 금액을 먼저 설정해 주세요.");
   }
   lines.push("", "실제 결과는 매수 시점별 가격, 환율, 세금, 수수료에 따라 달라집니다.");
   return lines.join("\n");
