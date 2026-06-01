@@ -581,3 +581,291 @@ pre.answer {
     bottom: 28px;
   }
 }
+
+:root {
+  color-scheme: dark;
+  --bg: #05070a;
+  --surface: rgba(255, 255, 255, 0.16);
+  --soft: rgba(255, 255, 255, 0.10);
+  --text: #f7fbff;
+  --muted: rgba(238, 244, 255, 0.68);
+  --line: rgba(255, 255, 255, 0.24);
+  --nav: rgba(8, 12, 18, 0.62);
+  --accent: #98f5c2;
+  --accent-dark: #8ce8ff;
+  --green: #8af5a5;
+  --red: #ff9588;
+  --amber: #ffd27a;
+  --glass-bg: rgba(255, 255, 255, 0.18);
+  --glass-bg-strong: rgba(255, 255, 255, 0.24);
+  --glass-bg-soft: rgba(255, 255, 255, 0.10);
+  --glass-border: rgba(255, 255, 255, 0.36);
+  --glass-border-top: rgba(255, 255, 255, 0.62);
+  --glass-inset-light: rgba(255, 255, 255, 0.38);
+  --glass-inset-dark: rgba(0, 0, 0, 0.18);
+  --glass-shadow: 0 18px 56px rgba(0, 0, 0, 0.28);
+  --glass-radius: 24px;
+  --shadow: var(--glass-shadow);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(116, 241, 192, 0.16), transparent 34%),
+    radial-gradient(circle at 84% 18%, rgba(72, 160, 255, 0.18), transparent 32%),
+    linear-gradient(135deg, #05070a 0%, #0c1119 48%, #11100f 100%);
+  color: var(--text);
+}
+
+.liquid-glass-container,
+.hero,
+.panel,
+.metrics > div,
+.holding-card,
+.plan-row,
+.holding-form-card,
+.brief-highlights div,
+.news-item {
+  position: relative;
+  overflow: hidden;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-top: 1px solid var(--glass-border-top);
+  border-radius: var(--glass-radius);
+  box-shadow:
+    inset 1px 1px 2px var(--glass-inset-light),
+    inset -1px -1px 2px var(--glass-inset-dark),
+    var(--glass-shadow);
+}
+
+.liquid-glass-container::before,
+.hero::before,
+.panel::before,
+.metrics > div::before,
+.holding-card::before,
+.plan-row::before,
+.holding-form-card::before,
+.brief-highlights div::before,
+.news-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.76), transparent);
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(119, 244, 196, 0.14), transparent 30%),
+    radial-gradient(circle at 90% 6%, rgba(112, 178, 255, 0.16), transparent 32%),
+    linear-gradient(145deg, #05070a 0%, #0b1018 58%, #15120f 100%);
+}
+
+.sidebar {
+  background: rgba(7, 11, 17, 0.68);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border-right: 1px solid rgba(255,255,255,0.18);
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.08), 12px 0 32px rgba(0,0,0,0.24);
+}
+
+.brand-mark {
+  border: 1px solid rgba(255,255,255,0.54);
+  background: rgba(255,255,255,0.92);
+  color: #061018;
+  box-shadow: inset 1px 1px 2px rgba(255,255,255,0.8), 0 10px 26px rgba(0,0,0,0.2);
+}
+
+.brand span {
+  color: rgba(255,255,255,0.58);
+}
+
+.nav-item {
+  color: rgba(255,255,255,0.68);
+  border: 1px solid transparent;
+  border-radius: 16px;
+}
+
+.nav-item.active,
+.nav-item:hover {
+  border-color: rgba(255,255,255,0.28);
+  background: rgba(255,255,255,0.13);
+  color: #ffffff;
+  box-shadow: inset 1px 1px 1px rgba(255,255,255,0.18);
+}
+
+main {
+  color: var(--text);
+}
+
+.hero {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.24), rgba(255,255,255,0.08)),
+    radial-gradient(circle at 12% 0%, rgba(152,245,194,0.22), transparent 38%);
+}
+
+.eyebrow {
+  color: var(--accent);
+}
+
+h1,
+h2,
+strong,
+dd {
+  color: #ffffff;
+}
+
+p,
+.hint,
+.sync-note,
+label,
+.metrics span,
+.holding-main span,
+small,
+.plan-chip,
+dt {
+  color: var(--muted);
+}
+
+button {
+  border-color: rgba(255,255,255,0.26);
+  background: rgba(255,255,255,0.12);
+  color: #ffffff;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-radius: 16px;
+  box-shadow: inset 1px 1px 1px rgba(255,255,255,0.22), 0 10px 24px rgba(0,0,0,0.16);
+}
+
+button:hover {
+  border-color: rgba(255,255,255,0.42);
+  background: rgba(255,255,255,0.18);
+}
+
+button.primary {
+  border-color: rgba(152,245,194,0.86);
+  background: rgba(152,245,194,0.92);
+  color: #05110c;
+}
+
+.metrics {
+  gap: 14px;
+}
+
+.metrics > div {
+  min-height: 112px;
+  padding: 18px;
+}
+
+.metrics strong {
+  font-size: 24px;
+}
+
+.holding-card,
+.panel {
+  background: rgba(255,255,255,0.14);
+}
+
+.holding-card {
+  padding: 16px;
+}
+
+.pill,
+.plan-chip,
+.brief-highlights div {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.20);
+}
+
+input,
+select,
+textarea {
+  border-color: rgba(255,255,255,0.24);
+  background: rgba(255,255,255,0.12);
+  color: #ffffff;
+  border-radius: 16px;
+  box-shadow: inset 1px 1px 2px rgba(255,255,255,0.14), inset -1px -1px 2px rgba(0,0,0,0.16);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(255,255,255,0.42);
+}
+
+select option {
+  color: #111827;
+}
+
+.plan-row,
+.holding-form-card {
+  background: rgba(255,255,255,0.10);
+}
+
+.news-item {
+  padding: 12px;
+  border-bottom: 0;
+}
+
+.news-item a {
+  color: #ffffff;
+}
+
+.news-item small {
+  color: rgba(255,255,255,0.58);
+}
+
+pre {
+  background: rgba(4, 8, 13, 0.58);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+  border-radius: 18px;
+  box-shadow: inset 1px 1px 2px rgba(255,255,255,0.12), inset -1px -1px 2px rgba(0,0,0,0.28);
+}
+
+pre.answer {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.9);
+  border-color: rgba(255,255,255,0.2);
+}
+
+#toast {
+  background: rgba(9, 13, 20, 0.74);
+  border: 1px solid rgba(255,255,255,0.24);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+}
+
+.landing-shade {
+  background:
+    linear-gradient(90deg, rgba(5, 7, 10, 0.84) 0%, rgba(5, 7, 10, 0.32) 48%, rgba(5, 7, 10, 0.50) 100%),
+    linear-gradient(180deg, rgba(5, 7, 10, 0.10) 0%, rgba(5, 7, 10, 0.80) 100%);
+}
+
+.landing-content h1 {
+  text-shadow: 0 18px 52px rgba(0,0,0,0.48);
+}
+
+.stock-orbit button,
+.landing-link,
+.landing-secondary {
+  box-shadow:
+    inset 1px 1px 2px rgba(255,255,255,0.26),
+    inset -1px -1px 2px rgba(0,0,0,0.12),
+    0 14px 34px rgba(0,0,0,0.22);
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.18);
+  }
+
+  main {
+    padding: 14px;
+  }
+}

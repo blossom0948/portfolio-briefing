@@ -14,6 +14,7 @@
   const landingPage = document.querySelector("#landingPage");
   const state = {
     points: [],
+    dates: [],
     active: fallbackHoldings[0],
     changePct: null,
     hue: 210,
@@ -56,9 +57,19 @@
     });
   }
 
+  function fallbackDates(length = 96) {
+    const now = new Date();
+    return Array.from({ length }, (_, index) => {
+      const day = new Date(now);
+      day.setDate(now.getDate() - (length - index - 1));
+      return day.toISOString().slice(0, 10);
+    });
+  }
+
   function setChartMeta(data, item) {
     const points = data?.points?.map((point) => Number(point.close)).filter(Number.isFinite) || [];
     state.points = points.length > 3 ? points : fallbackPoints();
+    state.dates = data?.points?.map((point) => point.date).filter(Boolean) || fallbackDates(state.points.length);
     state.active = item;
     state.changePct = typeof data?.change_pct === "number" ? data.change_pct : null;
     const positive = (state.changePct || 0) >= 0;
@@ -71,7 +82,9 @@
     stockChange.classList.toggle("up", positive);
     const last = state.points.at(-1);
     if (last) {
-      document.querySelector("#landingStockRange").textContent = `최근 6개월 · ${money(last, data?.currency || (item.market === "KR" ? "KRW" : "USD"))}`;
+      const firstDate = state.dates[0] || "시작";
+      const lastDate = state.dates.at(-1) || "최근";
+      document.querySelector("#landingStockRange").textContent = `${firstDate} → ${lastDate} · ${money(last, data?.currency || (item.market === "KR" ? "KRW" : "USD"))}`;
     }
   }
 
@@ -115,6 +128,13 @@
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
 
+  function formatDateLabel(dateText) {
+    if (!dateText) return "";
+    const date = new Date(dateText);
+    if (Number.isNaN(date.getTime())) return dateText;
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  }
+
   function chartCoords(width, height, time) {
     const values = state.points.length ? state.points : fallbackPoints();
     const min = Math.min(...values);
@@ -128,7 +148,7 @@
       const normalized = (value - min) / range;
       const y = height - padY - normalized * (height - padY * 1.75);
       const pulse = Math.sin(time * 1.8 + index * 0.34) * 6;
-      return [x, y + pulse];
+      return [x, y + pulse, value, state.dates[index]];
     });
   }
 
@@ -147,6 +167,46 @@
     ctx.stroke();
   }
 
+  function drawChartLabels(points, width, height) {
+    if (!points.length) return;
+    const labelIndexes = [0, Math.floor(points.length / 2), points.length - 1];
+    ctx.save();
+    ctx.font = "700 12px Arial, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.65)";
+    ctx.shadowBlur = 10;
+    labelIndexes.forEach((index) => {
+      const point = points[index];
+      if (!point) return;
+      const [x, y, value, date] = point;
+      ctx.beginPath();
+      ctx.fillStyle = `hsla(${state.hue}, 100%, 66%, 0.95)`;
+      ctx.arc(x, y, index === points.length - 1 ? 5 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.textAlign = index === 0 ? "left" : index === points.length - 1 ? "right" : "center";
+      ctx.fillText(formatDateLabel(date), x, Math.min(height - 34, y + 32));
+      if (index === points.length - 1) {
+        const currency = state.active.market === "KR" ? "KRW" : "USD";
+        const price = money(value, currency);
+        const pillWidth = Math.min(152, ctx.measureText(price).width + 24);
+        const pillX = Math.min(width - pillWidth - 18, Math.max(18, x - pillWidth + 10));
+        const pillY = Math.max(72, y - 42);
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.strokeStyle = "rgba(255,255,255,0.42)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillWidth, 28, 14);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.fillText(price, pillX + pillWidth / 2, pillY + 14);
+      }
+    });
+    ctx.restore();
+  }
+
   function draw(timestamp) {
     if (!canvas || !ctx) return;
     const width = canvas.clientWidth || window.innerWidth;
@@ -161,7 +221,7 @@
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = "rgba(255,255,255,0.055)";
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
     ctx.lineWidth = 1;
     for (let i = 0; i < 9; i += 1) {
       const y = (height / 8) * i;
@@ -172,14 +232,15 @@
     }
 
     const points = chartCoords(width, height, time);
-    const color = `hsla(${state.hue}, 92%, 62%, ALPHA)`;
-    ctx.shadowColor = `hsla(${state.hue}, 100%, 62%, 0.85)`;
-    ctx.shadowBlur = 22;
-    strokePath(points, color, 9, 0.13, 30);
-    strokePath(points, color, 5, 0.22, 14);
-    strokePath(points, color, 3, 0.9, 0);
+    const color = `hsla(${state.hue}, 95%, 66%, ALPHA)`;
+    ctx.shadowColor = `hsla(${state.hue}, 100%, 66%, 1)`;
+    ctx.shadowBlur = 34;
+    strokePath(points, color, 18, 0.12, 42);
+    strokePath(points, color, 12, 0.22, 22);
+    strokePath(points, color, 6, 0.94, 0);
     ctx.shadowBlur = 0;
-    strokePath(points, "rgba(255,255,255,ALPHA)", 1.2, 0.95, 0);
+    strokePath(points, "rgba(255,255,255,ALPHA)", 2, 0.96, 0);
+    drawChartLabels(points, width, height);
 
     const count = 11;
     for (let i = 0; i < count; i += 1) {
