@@ -64,6 +64,48 @@ function toast(message) {
   window.setTimeout(() => el.classList.remove("show"), 3000);
 }
 
+function aiSettings() {
+  return {
+    provider: localStorage.getItem("briefolioAiProvider") || "gemini",
+    apiKey: localStorage.getItem("briefolioAiApiKey") || "",
+    model: localStorage.getItem("briefolioAiModel") || "",
+  };
+}
+
+function defaultAiModel(provider) {
+  return provider === "openai" ? "gpt-4o-mini" : "gemini-2.0-flash";
+}
+
+function aiRequestPayload() {
+  const settings = aiSettings();
+  if (!settings.apiKey.trim()) return {};
+  return {
+    aiProvider: settings.provider,
+    aiApiKey: settings.apiKey.trim(),
+    aiModel: settings.model.trim() || defaultAiModel(settings.provider),
+  };
+}
+
+function loadAiSettingsForm() {
+  const settings = aiSettings();
+  const provider = $("#aiProvider");
+  const key = $("#aiApiKey");
+  const model = $("#aiModel");
+  if (provider) provider.value = settings.provider;
+  if (key) key.value = settings.apiKey;
+  if (model) model.value = settings.model || defaultAiModel(settings.provider);
+}
+
+function saveAiSettingsForm() {
+  const provider = $("#aiProvider")?.value || "gemini";
+  const apiKey = $("#aiApiKey")?.value.trim() || "";
+  const model = $("#aiModel")?.value.trim() || defaultAiModel(provider);
+  localStorage.setItem("briefolioAiProvider", provider);
+  localStorage.setItem("briefolioAiApiKey", apiKey);
+  localStorage.setItem("briefolioAiModel", model);
+  toast(apiKey ? "AI 키를 이 브라우저에 저장했습니다." : "AI 키를 비웠습니다. 서버 환경변수만 사용합니다.");
+}
+
 async function requestJson(url, options) {
   const requestOptions = options ? { ...options } : {};
   const timeoutMs = requestOptions.timeoutMs;
@@ -175,7 +217,7 @@ async function analyzeTossCapture(file) {
   const result = await requestJson("/api/capture", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, ...aiRequestPayload() }),
   });
   renderCapturePreview(result);
 }
@@ -225,7 +267,7 @@ async function askDockAi() {
     const result = await requestJson("/api/ai", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, ...aiRequestPayload() }),
       timeoutMs: 18000,
     });
     $("#aiDockAnswer").textContent = result.answer;
@@ -1022,7 +1064,7 @@ async function askProAi() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       timeoutMs: 9000,
-      body: JSON.stringify({ question: `${question}\n\n[포트폴리오]\n${context}\n\n[브리핑]\n${state.briefing || ""}` }),
+      body: JSON.stringify({ question: `${question}\n\n[포트폴리오]\n${context}\n\n[브리핑]\n${state.briefing || ""}`, ...aiRequestPayload() }),
     });
     $("#proAiAnswer").textContent = result.answer;
   } catch (error) {
@@ -1235,7 +1277,7 @@ $("#askAiBtn").addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       timeoutMs: 9000,
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, ...aiRequestPayload() }),
     });
     $("#aiAnswer").textContent = result.answer;
   } catch (error) {
@@ -1263,6 +1305,12 @@ document.querySelectorAll(".quick-prompts button").forEach((button) => {
 $("#aiDockToggle")?.addEventListener("click", () => setAiDock($("#aiDockPanel")?.hidden));
 $("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
 $("#aiDockAsk")?.addEventListener("click", () => askDockAi());
+$("#saveAiKeyBtn")?.addEventListener("click", saveAiSettingsForm);
+$("#aiProvider")?.addEventListener("change", () => {
+  const provider = $("#aiProvider")?.value || "gemini";
+  const model = $("#aiModel");
+  if (model) model.value = defaultAiModel(provider);
+});
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   analyzeTossCapture(file).catch((error) => {
@@ -1274,6 +1322,7 @@ $("#applyCaptureBtn")?.addEventListener("click", () => {
 });
 
 $("#tradeForm").date.valueAsDate = new Date();
+loadAiSettingsForm();
 loadAll().catch((error) => {
   $("#briefingText").textContent = `초기 로딩 실패: ${error.message}`;
   toast("초기 로딩에 실패했습니다.");

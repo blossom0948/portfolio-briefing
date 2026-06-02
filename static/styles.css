@@ -834,6 +834,44 @@ pre.answer {
   min-height: 86px;
 }
 
+.ai-key-box {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid rgba(235,235,245,0.12);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.045);
+}
+
+.ai-key-row {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 8px;
+}
+
+.ai-key-box label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-key-box input,
+.ai-key-box select {
+  min-height: 38px;
+}
+
+.ai-key-box button {
+  min-height: 38px;
+}
+
+.ai-key-box small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .compact-answer {
   max-height: 180px;
   overflow: auto;

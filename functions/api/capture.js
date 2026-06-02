@@ -45,12 +45,13 @@ function normalizeCapture(data) {
   };
 }
 
-async function askOpenAIVision(env, image, mimeType) {
-  const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
+async function askOpenAIVision(env, image, mimeType, override = {}) {
+  const apiKey = override.apiKey || env.OPENAI_API_KEY;
+  const model = override.model || env.OPENAI_VISION_MODEL || "gpt-4o-mini";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -79,9 +80,10 @@ async function askOpenAIVision(env, image, mimeType) {
   return { ...normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] }), provider: "openai", model };
 }
 
-async function askGeminiVision(env, image, mimeType) {
-  const model = env.GEMINI_MODEL || "gemini-2.0-flash";
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
+async function askGeminiVision(env, image, mimeType, override = {}) {
+  const apiKey = override.apiKey || env.GEMINI_API_KEY;
+  const model = override.model || env.GEMINI_MODEL || "gemini-2.0-flash";
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -103,9 +105,32 @@ async function askGeminiVision(env, image, mimeType) {
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { image = "", mimeType = "image/png" } = await request.json();
+    const { image = "", mimeType = "image/png", aiProvider = "", aiApiKey = "", aiModel = "" } = await request.json();
     if (!image) return json({ error: "image is required" }, { status: 400 });
     const warnings = [];
+    const clientProvider = String(aiProvider || "").toLowerCase();
+    const clientKey = String(aiApiKey || "").trim();
+
+    if (clientKey && clientProvider === "openai") {
+      const model = aiModel || "gpt-4o-mini";
+      try {
+        return json(await askOpenAIVision(env, image, mimeType, { apiKey: clientKey, model }));
+      } catch (error) {
+        if (!providerProblem(error.message)) throw error;
+        warnings.push(providerWarning("OpenAI", model, error.message));
+      }
+    }
+
+    if (clientKey && clientProvider === "gemini") {
+      const model = aiModel || "gemini-2.0-flash";
+      try {
+        return json(await askGeminiVision(env, image, mimeType, { apiKey: clientKey, model }));
+      } catch (error) {
+        if (!providerProblem(error.message)) throw error;
+        warnings.push(providerWarning("Gemini", model, error.message));
+      }
+    }
+
     if (env.OPENAI_API_KEY) {
       const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
       try {

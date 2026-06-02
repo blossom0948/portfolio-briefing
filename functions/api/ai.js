@@ -17,15 +17,17 @@ async function withTimeout(promiseFactory, ms = 12000) {
   }
 }
 
-async function askOpenAI(env, prompt) {
+async function askOpenAI(env, prompt, override = {}) {
+  const apiKey = override.apiKey || env.OPENAI_API_KEY;
+  const model = override.model || env.OPENAI_MODEL || "gpt-4o-mini";
   const response = await withTimeout((signal) => fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: env.OPENAI_MODEL || "gpt-4o-mini",
+      model,
       input: prompt,
       max_output_tokens: 900,
     }),
@@ -36,9 +38,10 @@ async function askOpenAI(env, prompt) {
   return data.output_text || data.output?.flatMap((item) => item.content || []).map((part) => part.text || "").join("") || "AI 응답을 읽지 못했습니다.";
 }
 
-async function askGemini(env, prompt) {
-  const model = env.GEMINI_MODEL || "gemini-2.0-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+async function askGemini(env, prompt, override = {}) {
+  const apiKey = override.apiKey || env.GEMINI_API_KEY;
+  const model = override.model || env.GEMINI_MODEL || "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await withTimeout((signal) => fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -55,7 +58,7 @@ async function askGemini(env, prompt) {
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { question = "" } = await request.json();
+    const { question = "", aiProvider = "", aiApiKey = "", aiModel = "" } = await request.json();
     const snapshot = await buildSnapshot(env);
     const briefing = await fetchLastBriefing(env);
     const prompt = [
@@ -72,13 +75,34 @@ export async function onRequestPost({ request, env }) {
       "질문:",
       question,
     ].join("\n");
+    const warnings = [];
+    const clientProvider = String(aiProvider || "").toLowerCase();
+    const clientKey = String(aiApiKey || "").trim();
+
+    if (clientKey && clientProvider === "openai") {
+      try {
+        return json({ answer: await askOpenAI(env, prompt, { apiKey: clientKey, model: aiModel || "gpt-4o-mini" }) });
+      } catch (error) {
+        if (!providerProblem(error.message)) throw error;
+        warnings.push(`OpenAI: ${error.message}`);
+      }
+    }
+
+    if (clientKey && clientProvider === "gemini") {
+      try {
+        return json({ answer: await askGemini(env, prompt, { apiKey: clientKey, model: aiModel || "gemini-2.0-flash" }) });
+      } catch (error) {
+        if (!providerProblem(error.message)) throw error;
+        warnings.push(`Gemini: ${error.message}`);
+      }
+    }
 
     if (env.OPENAI_API_KEY) {
       try {
         return json({ answer: await askOpenAI(env, prompt) });
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ answer: localProjection(question, snapshot, `외부 AI 문제: ${error.message}`) });
+        warnings.push(`OpenAI: ${error.message}`);
       }
     }
     if (env.GEMINI_API_KEY) {
@@ -86,10 +110,10 @@ export async function onRequestPost({ request, env }) {
         return json({ answer: await askGemini(env, prompt) });
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ answer: localProjection(question, snapshot, `외부 AI 문제: ${error.message}`) });
+        warnings.push(`Gemini: ${error.message}`);
       }
     }
-    return json({ answer: localProjection(question, snapshot, "AI 키가 없어 내장 계산 모드로 답합니다.") });
+    return json({ answer: localProjection(question, snapshot, warnings.length ? `외부 AI 문제: ${warnings.join(" / ")}` : "AI 키가 없어 내장 계산 모드로 답합니다.") });
   } catch (error) {
     const snapshot = await buildSnapshot(env).catch(() => ({ holdings: [], totals: {}, active_plans: 0 }));
     return json({ answer: localProjection("", snapshot, `AI 서버 처리 문제: ${error.message}`) });

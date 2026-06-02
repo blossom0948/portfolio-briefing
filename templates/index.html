@@ -357,6 +357,24 @@
           </div>
           <button id="aiDockClose" type="button">닫기</button>
         </div>
+        <div class="ai-key-box">
+          <div class="ai-key-row">
+            <label>Provider
+              <select id="aiProvider">
+                <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </label>
+            <label>Model
+              <input id="aiModel" placeholder="gemini-2.0-flash">
+            </label>
+          </div>
+          <label>API Key
+            <input id="aiApiKey" type="password" autocomplete="off" placeholder="이 브라우저에만 저장">
+          </label>
+          <button id="saveAiKeyBtn" type="button">AI 키 저장</button>
+          <small>Cloudflare 환경변수가 꼬여도 여기 저장한 키로 캡처 분석과 AI 질문을 먼저 시도합니다.</small>
+        </div>
         <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
         <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
         <pre id="aiDockAnswer" class="answer compact-answer">캡처를 올리면 현재 앱 기록과 비교해서 토스 화면 기준으로 맞출 수 있습니다.</pre>
