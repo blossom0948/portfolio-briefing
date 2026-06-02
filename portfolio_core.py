@@ -1483,6 +1483,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
     )
     if os.environ.get("OPENAI_API_KEY"):
         try:
+            model = os.environ.get("OPENAI_VISION_MODEL") or "gpt-4o-mini"
             response = requests.post(
                 "https://api.openai.com/v1/responses",
                 headers={
@@ -1490,7 +1491,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": os.environ.get("OPENAI_VISION_MODEL") or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                    "model": model,
                     "input": [
                         {
                             "role": "user",
@@ -1506,7 +1507,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
             )
             data = response.json()
             if response.status_code >= 400:
-                return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [friendly_ai_error(data.get("error", {}).get("message") or response.text)]}
+                raise RuntimeError(data.get("error", {}).get("message") or response.text)
             text = data.get("output_text") or ""
             if not text:
                 chunks = []
@@ -1515,9 +1516,43 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
                         if content.get("text"):
                             chunks.append(content["text"])
                 text = "\n".join(chunks)
-            return normalize_capture_result(parse_json_block(text))
+            result = normalize_capture_result(parse_json_block(text))
+            result["provider"] = "openai"
+            result["model"] = model
+            return result
         except Exception as exc:
-            return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [friendly_ai_error(str(exc))]}
+            openai_warning = f"OpenAI({os.environ.get('OPENAI_VISION_MODEL') or 'gpt-4o-mini'}): {friendly_ai_error(str(exc))}"
+            if os.environ.get("GEMINI_API_KEY"):
+                try:
+                    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+                    response = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                        params={"key": os.environ["GEMINI_API_KEY"]},
+                        json={
+                            "contents": [
+                                {
+                                    "role": "user",
+                                    "parts": [
+                                        {"text": prompt},
+                                        {"inline_data": {"mime_type": mime_type, "data": image_base64}},
+                                    ],
+                                }
+                            ],
+                            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1200},
+                        },
+                        timeout=30,
+                    )
+                    data = response.json()
+                    if response.status_code >= 400:
+                        raise RuntimeError(data.get("error", {}).get("message") or response.text)
+                    text = "".join(part.get("text", "") for part in data.get("candidates", [{}])[0].get("content", {}).get("parts", []))
+                    result = normalize_capture_result(parse_json_block(text))
+                    result["provider"] = "gemini"
+                    result["model"] = model
+                    return result
+                except Exception as gemini_exc:
+                    return {"summary": "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", "holdings": [], "warnings": [openai_warning, f"Gemini({os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')}): {friendly_ai_error(str(gemini_exc))}"]}
+            return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [openai_warning]}
     return {
         "summary": "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
         "holdings": [],

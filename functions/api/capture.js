@@ -18,6 +18,10 @@ function friendlyProviderMessage(message = "") {
   return "AI 이미지 분석에 실패했습니다. 잠시 뒤 다시 시도하거나 더 선명한 캡처를 올려주세요.";
 }
 
+function providerWarning(provider, model, message) {
+  return `${provider}(${model}): ${friendlyProviderMessage(message)}`;
+}
+
 function parseJsonText(text = "") {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
@@ -42,6 +46,7 @@ function normalizeCapture(data) {
 }
 
 async function askOpenAIVision(env, image, mimeType) {
+  const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -49,7 +54,7 @@ async function askOpenAIVision(env, image, mimeType) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-4o-mini",
+      model,
       input: [{
         role: "user",
         content: [
@@ -71,7 +76,7 @@ async function askOpenAIVision(env, image, mimeType) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || "OpenAI vision failed");
   const text = data.output_text || data.output?.flatMap((item) => item.content || []).map((part) => part.text || "").join("") || "";
-  return normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] });
+  return { ...normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] }), provider: "openai", model };
 }
 
 async function askGeminiVision(env, image, mimeType) {
@@ -93,28 +98,34 @@ async function askGeminiVision(env, image, mimeType) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || "Gemini vision failed");
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
-  return normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] });
+  return { ...normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] }), provider: "gemini", model };
 }
 
 export async function onRequestPost({ request, env }) {
   try {
     const { image = "", mimeType = "image/png" } = await request.json();
     if (!image) return json({ error: "image is required" }, { status: 400 });
+    const warnings = [];
     if (env.OPENAI_API_KEY) {
+      const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
       try {
         return json(await askOpenAIVision(env, image, mimeType));
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ summary: "AI 한도 문제로 캡처를 읽지 못했습니다.", holdings: [], warnings: [friendlyProviderMessage(error.message)] });
+        warnings.push(providerWarning("OpenAI", model, error.message));
       }
     }
     if (env.GEMINI_API_KEY) {
+      const model = env.GEMINI_MODEL || "gemini-2.0-flash";
       try {
         return json(await askGeminiVision(env, image, mimeType));
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        return json({ summary: "Gemini 한도 문제로 캡처를 읽지 못했습니다.", holdings: [], warnings: [friendlyProviderMessage(error.message)] });
+        warnings.push(providerWarning("Gemini", model, error.message));
       }
+    }
+    if (warnings.length) {
+      return json({ summary: "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", holdings: [], warnings });
     }
     return json({ summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.", holdings: [], warnings: ["OPENAI_API_KEY 또는 GEMINI_API_KEY를 Cloudflare Pages 환경 변수에 넣어야 합니다."] });
   } catch (error) {
