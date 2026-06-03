@@ -190,12 +190,13 @@ const BAD_OVERSEAS_TERMS = [
 ];
 
 function isRelevant(item, terms, market) {
-  const haystack = normalizeTerm(`${item.title} ${item.title_ko} ${item.source}`);
-  if (!haystack) return false;
-  if (market === "domestic" && ["블로그", "카페", "지식in"].some((term) => haystack.includes(term.toLowerCase()))) return false;
-  if (market === "overseas" && BAD_OVERSEAS_TERMS.some((term) => haystack.includes(term))) return false;
+  const titleText = normalizeTerm(`${item.title} ${item.title_ko}`);
+  const fullText = normalizeTerm(`${item.title} ${item.title_ko} ${item.source}`);
+  if (!titleText) return false;
+  if (market === "domestic" && ["블로그", "카페", "지식in"].some((term) => fullText.includes(term.toLowerCase()))) return false;
+  if (market === "overseas" && BAD_OVERSEAS_TERMS.some((term) => fullText.includes(term))) return false;
   if (!terms.length) return true;
-  return terms.some((term) => haystack.includes(term));
+  return terms.some((term) => titleText.includes(term));
 }
 
 async function collectNews(queries, options, terms, market) {
