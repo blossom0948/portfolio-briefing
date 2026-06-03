@@ -1,7 +1,7 @@
 import { json } from "../_shared.js";
 
 const CAPTURE_PROMPT = [
-  "토스증권 보유 주식 화면 캡처를 읽어 JSON만 반환해.",
+  "증권사 앱의 보유 주식 화면 캡처를 읽어 JSON만 반환해.",
   "반환 형식은 반드시 {\"summary\":\"...\",\"warnings\":[],\"holdings\":[]} 이어야 한다.",
   "holdings 각 항목은 name, symbol, market, quantity, average_price, average_price_currency 필드를 가져야 한다.",
   "market은 한국 주식이면 KR, 미국 주식이면 US로 써라.",
@@ -194,7 +194,7 @@ export async function onRequestPost({ request, env }) {
       return json({
         summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
         holdings: [],
-        warnings: ["브라우저 AI 키 또는 Cloudflare Pages 환경변수 키가 필요합니다."],
+        warnings: ["Cloudflare Pages 환경변수에 OPENAI_API_KEY 또는 GEMINI_API_KEY가 필요합니다."],
         attempts: [],
       });
     }

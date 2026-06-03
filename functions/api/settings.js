@@ -8,7 +8,7 @@ function normalizeSettings(current = {}, payload = {}) {
   return next;
 }
 
-async function updateSettings(request, env) {
+async function updateSettings({ request, env }) {
   try {
     const payload = await request.json();
     const portfolio = await fetchPortfolio(env);

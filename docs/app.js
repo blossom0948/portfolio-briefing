@@ -49,13 +49,24 @@ function friendlyWarning(message = "") {
 }
 
 function number(value) {
+  return Number(value || 0).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+}
+
+function quantity(value) {
   return Number(value || 0).toLocaleString("ko-KR", { maximumFractionDigits: 6 });
+}
+
+function percent(value, signed = true) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  const sign = signed && numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(2)}%`;
 }
 
 function changeLabel(item) {
   if (item.change === null || item.change === undefined) return "-";
   const sign = item.change > 0 ? "+" : "";
-  return `${sign}${money(Math.abs(item.change), item.currency)} / ${sign}${item.change_pct}%`;
+  return `${sign}${money(Math.abs(item.change), item.currency)} / ${percent(item.change_pct)}`;
 }
 
 function toast(message) {
@@ -120,7 +131,14 @@ async function requestJson(url, options) {
     }
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || response.statusText);
+      let message = text || response.statusText;
+      try {
+        const data = JSON.parse(text);
+        message = data.error || data.message || message;
+      } catch {
+        // Non-JSON errors are still shown as-is.
+      }
+      throw new Error(message);
     }
     return response.json();
   } catch (error) {
@@ -163,7 +181,8 @@ function focusLatestUserMessage() {
       body.scrollTop = 0;
       return;
     }
-    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 12);
+    // 새 질문 직후에는 사용자 말풍선과 답변 시작점이 보이게만 맞추고, 답변 끝으로 강제 이동하지 않는다.
+    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 18);
   });
 }
 
@@ -346,11 +365,15 @@ async function askDockAi() {
     addAiMessage("assistant", "매수 문장으로 인식했습니다. 현재가 기준 수량을 계산해서 보유 종목에 반영하는 중입니다...");
     try {
       const result = await applyTradeCommand(tradeCommand);
+      const inputLine = tradeCommand.quantity
+        ? `- 입력 수량: ${quantity(result.quantity)}주`
+        : `- 입력 금액: ${money(result.amount, result.amountCurrency)}`;
       updateLastAssistantMessage([
         `${result.holding.name} 매수를 반영했습니다.`,
-        `- 입력 금액: ${money(result.amount, result.amountCurrency)}`,
+        inputLine,
+        `- 계산 금액: ${money(result.amount, result.amountCurrency)}`,
         `- 적용 가격: ${money(result.price, result.quoteCurrency)}`,
-        `- 추가 수량: ${result.quantity.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주`,
+        `- 추가 수량: ${quantity(result.quantity)}주`,
       ].join("\n"));
     } catch (error) {
       updateLastAssistantMessage(`매수 자동 반영에 실패했습니다.\n원인: ${error.message}`);
@@ -438,6 +461,12 @@ function parseMoneyCommand(text = "") {
   return { amount: Number(match[1]) * multiplier, currency: "KRW" };
 }
 
+function parseQuantityCommand(text = "") {
+  const normalized = String(text).replace(/,/g, "");
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*주/);
+  return match ? Number(match[1]) : 0;
+}
+
 function resolveTradeAsset(question = "") {
   const compact = compactKoreanText(question);
   const holdings = state.portfolio?.holdings || [];
@@ -453,12 +482,13 @@ function resolveTradeAsset(question = "") {
 
 function parseTradeCommand(question = "") {
   const compact = compactKoreanText(question);
-  if (!/(샀|삿|매수|구매|추가|담았|담앗)/.test(compact)) return null;
+  if (!/(샀|삿|사줘|사|매수|구매|추가|담았|담앗|담아)/.test(compact)) return null;
   const moneyCommand = parseMoneyCommand(question);
-  if (!moneyCommand || !moneyCommand.amount) return null;
+  const quantityCommand = parseQuantityCommand(question);
+  if ((!moneyCommand || !moneyCommand.amount) && !quantityCommand) return null;
   const asset = resolveTradeAsset(question);
   if (!asset) return null;
-  return { asset, ...moneyCommand };
+  return { asset, ...(moneyCommand || {}), quantity: quantityCommand || null };
 }
 
 async function discoverTradePrice(asset) {
@@ -502,8 +532,8 @@ async function applyTradeCommand(command) {
     ? { close: Number(snapshotItem.close), currency: snapshotItem.currency || quoteCurrency }
     : await discoverTradePrice(holding);
   const priceQuote = convertAmount(priceData.close, priceData.currency, quoteCurrency);
-  const amountQuote = convertAmount(command.amount, command.currency, quoteCurrency);
-  const quantity = priceQuote ? amountQuote / priceQuote : 0;
+  const amountQuote = command.amount ? convertAmount(command.amount, command.currency, quoteCurrency) : 0;
+  const quantity = command.quantity || (priceQuote ? amountQuote / priceQuote : 0);
   if (!quantity) throw new Error("현재가 기준 수량을 계산하지 못했습니다.");
 
   const updated = await requestJson(`/api/holdings/${holding.id}/transactions`, {
@@ -519,7 +549,7 @@ async function applyTradeCommand(command) {
     }),
   });
   await loadAll();
-  return { holding: updated, quantity, price: priceQuote, quoteCurrency, amount: command.amount, amountCurrency: command.currency };
+  return { holding: updated, quantity, price: priceQuote, quoteCurrency, amount: command.amount || (quantity * priceQuote), amountCurrency: command.currency || quoteCurrency };
 }
 
 function planExecutionPreview(item) {
@@ -790,10 +820,11 @@ function renderSnapshot(snapshot) {
     }
     const direction = item.change >= 0 ? "positive" : "negative";
     const profitClass = item.profit >= 0 ? "positive" : "negative";
-    const profit = item.cost ? `<span class="${profitClass}">${item.profit_pct}%</span>` : "<span>-</span>";
+    const profit = item.cost ? `<span class="${profitClass}">${percent(item.profit_pct)}</span>` : "<span>-</span>";
     const valueText = item.value ? `${krwApprox(item.value, item.currency) || shortMoney(item.value, item.currency)}` : "-";
     const avgText = item.average_price ? shortMoney(item.average_price, item.average_price_currency || item.currency) : "-";
     const priceMeta = krwApprox(item.close, item.currency);
+    const changeText = item.change_pct === null || item.change_pct === undefined ? "-" : percent(item.change_pct);
     return `
       <article class="holding-card">
         <div class="holding-main">
@@ -805,15 +836,15 @@ function renderSnapshot(snapshot) {
         </div>
         <div class="price-line">
           <div class="price-stack"><b>${shortMoney(item.close, item.currency)}</b>${priceMeta ? `<small>${priceMeta}</small>` : ""}</div>
-          <span class="${direction}">${item.change_pct === null || item.change_pct === undefined ? "-" : `${item.change >= 0 ? "+" : ""}${item.change_pct}%`}</span>
+          <span class="${direction}">${changeText}</span>
         </div>
         <dl>
-          <div><dt>수량</dt><dd>${number(item.quantity)}</dd></div>
+          <div><dt>수량</dt><dd>${quantity(item.quantity)}</dd></div>
           <div><dt>평단</dt><dd>${avgText}</dd></div>
           <div><dt>평가액</dt><dd>${valueText}</dd></div>
           <div><dt>손익</dt><dd>${profit}</dd></div>
         </dl>
-        <p class="plan-chip">${planText(item)}${item.plan?.enabled ? ` · 예상 ${number(item.plan_estimated_shares)}주` : ""}</p>
+        <p class="plan-chip">${planText(item)}${item.plan?.enabled ? ` · 예상 ${quantity(item.plan_estimated_shares)}주` : ""}</p>
       </article>
     `;
   }).join("");
@@ -871,7 +902,6 @@ function renderNews(news) {
   const render = (items) => items.map((item) => `
     <article class="news-item">
       <a href="${item.link}" target="_blank" rel="noreferrer">${item.title_ko || item.title}</a>
-      <small>${item.source || "뉴스"}${item.symbol ? ` · ${item.symbol}` : ""}</small>
     </article>
   `).join("") || "<p class=\"muted\">표시할 뉴스가 없습니다.</p>";
   $("#domesticNews").innerHTML = render(news.domestic);
@@ -1504,7 +1534,7 @@ $("#settingsForm").addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
     await loadAll();
-    toast("알림 설정을 저장했습니다.");
+    toast("브리핑 설정을 저장했습니다.");
   } catch (error) {
     toast(`설정 저장 실패: ${error.message}`);
   }
