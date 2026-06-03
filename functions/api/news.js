@@ -85,6 +85,21 @@ function parseNaverItems(html = "") {
   return items;
 }
 
+function cleanHtmlTitle(value = "") {
+  return decodeXml(String(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")).trim();
+}
+
+function parseBingItems(html = "") {
+  const items = [];
+  for (const match of html.matchAll(/<a[^>]+class="title"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+    const link = decodeXml(match[1]).trim();
+    const title = cleanHtmlTitle(match[2]);
+    if (!title || !link) continue;
+    items.push({ title, title_ko: title, link, source: "Bing News", published_at: new Date().toISOString() });
+  }
+  return items;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -110,6 +125,13 @@ async function naverNews(query, limit = 3) {
   const response = await fetchWithTimeout(url, { headers: { "user-agent": "Mozilla/5.0 Briefolio/1.0" } });
   if (!response.ok) return [];
   return parseNaverItems(await response.text()).slice(0, limit);
+}
+
+async function bingNews(query, limit = 3) {
+  const url = `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&qft=interval%3d%228%22&form=YFNR`;
+  const response = await fetchWithTimeout(url, { headers: { "user-agent": "Mozilla/5.0 Briefolio/1.0" } });
+  if (!response.ok) return [];
+  return parseBingItems(await response.text()).slice(0, limit);
 }
 
 async function yahooFinanceNews(symbol, limit = 3) {
@@ -198,7 +220,11 @@ async function collectNews(queries, options, terms, market) {
 async function collectDomesticFallback(queries, terms) {
   const seen = new Set();
   const items = [];
-  const results = await Promise.allSettled([...new Set(queries)].slice(0, 5).map((query) => naverNews(query, 5)));
+  const limitedQueries = [...new Set(queries)].slice(0, 5);
+  const results = await Promise.allSettled([
+    ...limitedQueries.map((query) => naverNews(query, 5)),
+    ...limitedQueries.map((query) => bingNews(query, 5)),
+  ]);
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
     for (const item of result.value || []) {
