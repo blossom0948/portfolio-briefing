@@ -129,26 +129,8 @@ async function askGeminiVision({ apiKey, model, image, mimeType }) {
 
 function configuredProviders(env, body) {
   const providers = [];
-  const browserKey = String(body.aiApiKey || "").trim();
-  const browserProvider = providerFromKey(body.aiProvider, browserKey);
-
-  if (browserKey && browserProvider === "openai") {
-    providers.push({
-      source: "browser",
-      provider: "openai",
-      model: String(body.aiModel || "").trim() || "gpt-4o-mini",
-      apiKey: browserKey,
-    });
-  }
-
-  if (browserKey && browserProvider === "gemini") {
-    providers.push({
-      source: "browser",
-      provider: "gemini",
-      model: String(body.aiModel || "").trim() || "gemini-2.0-flash",
-      apiKey: browserKey,
-    });
-  }
+  // 핵심 수정: 브라우저에서 넘어온 API 키는 사용하지 않는다.
+  // 키는 Cloudflare Pages 환경변수에만 보관해야 휴대폰/PC가 같은 설정을 쓴다.
 
   if (env.OPENAI_API_KEY) {
     providers.push({

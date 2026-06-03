@@ -65,14 +65,7 @@ function toast(message) {
 }
 
 function aiSettings() {
-  const providerInput = $("#aiProvider")?.value;
-  const keyInput = $("#aiApiKey")?.value;
-  const modelInput = $("#aiModel")?.value;
-  return {
-    provider: providerInput || localStorage.getItem("briefolioAiProvider") || "auto",
-    apiKey: keyInput !== undefined ? keyInput : localStorage.getItem("briefolioAiApiKey") || "",
-    model: modelInput !== undefined ? modelInput : localStorage.getItem("briefolioAiModel") || "",
-  };
+  return { provider: "server", apiKey: "", model: "" };
 }
 
 function defaultAiModel(provider) {
@@ -81,44 +74,23 @@ function defaultAiModel(provider) {
 }
 
 function aiRequestPayload() {
-  const settings = aiSettings();
-  if (!settings.apiKey.trim()) return {};
-  return {
-    aiProvider: settings.provider,
-    aiApiKey: settings.apiKey.trim(),
-    aiModel: settings.model.trim() || defaultAiModel(settings.provider),
-  };
+  // 핵심 수정: 브라우저에 저장된 오래된/잘못된 API 키를 절대 서버로 보내지 않는다.
+  return {};
 }
 
 function loadAiSettingsForm() {
-  const settings = aiSettings();
-  const provider = $("#aiProvider");
-  const key = $("#aiApiKey");
-  const model = $("#aiModel");
-  if (provider) provider.value = settings.provider;
-  if (key) key.value = settings.apiKey;
-  if (model) model.value = settings.model || defaultAiModel(settings.provider);
+  renderAiKeyStatus();
 }
 
 function saveAiSettingsForm() {
-  const provider = $("#aiProvider")?.value || "auto";
-  const apiKey = $("#aiApiKey")?.value.trim() || "";
-  const model = $("#aiModel")?.value.trim() || defaultAiModel(provider);
-  localStorage.setItem("briefolioAiProvider", provider);
-  localStorage.setItem("briefolioAiApiKey", apiKey);
-  localStorage.setItem("briefolioAiModel", model);
-  toast(apiKey ? "AI 키를 이 브라우저에 저장했습니다." : "AI 키를 비웠습니다. 서버 환경변수만 사용합니다.");
+  localStorage.removeItem("briefolioAiProvider");
+  localStorage.removeItem("briefolioAiApiKey");
+  localStorage.removeItem("briefolioAiModel");
   renderAiKeyStatus();
 }
 
 function renderAiKeyStatus() {
-  const status = $("#aiKeyStatus");
-  if (!status) return;
-  const settings = aiSettings();
-  const model = settings.model.trim() || defaultAiModel(settings.provider) || "키 prefix로 자동 선택";
-  status.textContent = settings.apiKey.trim()
-    ? `현재 요청은 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 시도합니다. 모델: ${model}`
-    : "브라우저 AI 키가 없어 서버 환경변수 키로만 시도합니다.";
+  // AI 키는 Cloudflare Pages 환경변수에서만 관리한다.
 }
 
 async function requestJson(url, options) {
@@ -234,10 +206,7 @@ function renderCapturePreview(result) {
 
 async function analyzeTossCapture(file) {
   if (!file) return;
-  const settings = aiSettings();
-  $("#aiDockAnswer").textContent = settings.apiKey.trim()
-    ? `캡처를 줄이고 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 분석 중입니다...`
-    : "브라우저 AI 키가 없어 서버 환경변수 키로 캡처를 분석 중입니다...";
+  $("#aiDockAnswer").textContent = "서버 AI 설정으로 캡처를 분석 중입니다...";
   $("#applyCaptureBtn").disabled = true;
   const payload = await fileToImagePayload(file);
   const result = await requestJson("/api/capture", {
@@ -1331,15 +1300,6 @@ document.querySelectorAll(".quick-prompts button").forEach((button) => {
 $("#aiDockToggle")?.addEventListener("click", () => setAiDock($("#aiDockPanel")?.hidden));
 $("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
 $("#aiDockAsk")?.addEventListener("click", () => askDockAi());
-$("#saveAiKeyBtn")?.addEventListener("click", saveAiSettingsForm);
-$("#aiProvider")?.addEventListener("change", () => {
-  const provider = $("#aiProvider")?.value || "auto";
-  const model = $("#aiModel");
-  if (model) model.value = defaultAiModel(provider);
-  renderAiKeyStatus();
-});
-$("#aiApiKey")?.addEventListener("input", renderAiKeyStatus);
-$("#aiModel")?.addEventListener("input", renderAiKeyStatus);
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   analyzeTossCapture(file).catch((error) => {

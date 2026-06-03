@@ -85,26 +85,7 @@ export async function onRequestPost({ request, env }) {
       question,
     ].join("\n");
     const warnings = [];
-    const clientKey = String(aiApiKey || "").trim();
-    const clientProvider = providerFromKey(aiProvider, clientKey);
-
-    if (clientKey && clientProvider === "openai") {
-      try {
-        return json({ answer: await askOpenAI(env, prompt, { apiKey: clientKey, model: aiModel || "gpt-4o-mini" }) });
-      } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(`OpenAI: ${error.message}`);
-      }
-    }
-
-    if (clientKey && clientProvider === "gemini") {
-      try {
-        return json({ answer: await askGemini(env, prompt, { apiKey: clientKey, model: aiModel || "gemini-2.0-flash" }) });
-      } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(`Gemini: ${error.message}`);
-      }
-    }
+    // 핵심 수정: 브라우저 API 키는 무시하고 Cloudflare 환경변수만 사용한다.
 
     if (env.OPENAI_API_KEY) {
       try {

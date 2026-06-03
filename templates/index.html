@@ -357,26 +357,7 @@
           </div>
           <button id="aiDockClose" type="button">닫기</button>
         </div>
-        <div class="ai-key-box">
-          <div class="ai-key-row">
-            <label>Provider
-              <select id="aiProvider">
-                <option value="auto">Auto</option>
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-              </select>
-            </label>
-            <label>Model
-              <input id="aiModel" placeholder="비우면 자동">
-            </label>
-          </div>
-          <label>API Key
-            <input id="aiApiKey" type="password" autocomplete="off" placeholder="이 브라우저에만 저장">
-          </label>
-          <button id="saveAiKeyBtn" type="button">AI 키 저장</button>
-          <small id="aiKeyStatus">브라우저 AI 키 상태를 확인하는 중입니다.</small>
-          <small>OpenAI 키는 sk-, Gemini 키는 AIza prefix로 자동 판별합니다.</small>
-        </div>
+        <p class="ai-server-note">AI 키는 Cloudflare 서버 환경변수에서만 사용합니다. 이 브라우저나 휴대폰에 따로 키를 저장하지 않습니다.</p>
         <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
         <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
         <pre id="aiDockAnswer" class="answer compact-answer">캡처를 올리면 현재 앱 기록과 비교해서 토스 화면 기준으로 맞출 수 있습니다.</pre>
@@ -390,7 +371,7 @@
     </aside>
 
     <div id="toast" role="status"></div>
-    <script src="/static/app.js?v=20260603-capture-full-fix"></script>
-    <script src="/static/landing.js?v=20260603-capture-full-fix"></script>
+    <script src="/static/app.js?v=20260603-server-ai-compact"></script>
+    <script src="/static/landing.js?v=20260603-server-ai-compact"></script>
   </body>
 </html>
