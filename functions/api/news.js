@@ -60,7 +60,7 @@ function parseRssItems(xml = "") {
   return items;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -105,10 +105,15 @@ function holdingsQueries(portfolio) {
     { name: "VOO", symbol: "VOO", market: "US" },
   ];
   return {
-    domesticQueries: domestic.flatMap((item) => [
-      `${item.name || item.symbol} 주가`,
-      `${item.name || item.symbol} 실적`,
-    ]),
+    domesticQueries: [
+      ...domestic.flatMap((item) => [
+        `${item.name || item.symbol} 주가`,
+        `${item.name || item.symbol} 실적`,
+      ]),
+      "삼성전자 반도체",
+      "삼성전자 HBM",
+      "코스피 삼성전자",
+    ],
     overseasQueries: overseas.flatMap((item) => [
       `${item.symbol} stock`,
       `${item.name || item.symbol} stock`,
@@ -134,7 +139,7 @@ function isRelevant(item, terms, market) {
 async function collectNews(queries, options, terms, market) {
   const seen = new Set();
   const items = [];
-  const limitedQueries = [...new Set(queries)].slice(0, 8);
+  const limitedQueries = [...new Set(queries)].slice(0, 5);
   const results = await Promise.allSettled(limitedQueries.map((query) => googleNews(query, { ...options, limit: 6 })));
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
