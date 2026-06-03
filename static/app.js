@@ -4,6 +4,7 @@ const state = {
   briefing: "",
   discover: { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 },
   capturedHoldings: [],
+  aiMessages: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -135,8 +136,75 @@ function setAiDock(open) {
   const button = $("#aiDockToggle");
   if (!panel || !button) return;
   panel.hidden = !open;
+  panel.classList.toggle("is-open", Boolean(open));
   button.setAttribute("aria-expanded", String(open));
-  if (open) renderAiKeyStatus();
+  if (open) {
+    renderAiKeyStatus();
+    window.setTimeout(() => $("#aiDockQuestion")?.focus(), 80);
+  } else {
+    panel.classList.remove("tools-open");
+    $("#aiDockMenu")?.setAttribute("aria-expanded", "false");
+  }
+}
+
+function formatAiText(text = "") {
+  return escapeHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
+function scrollAiChat() {
+  const body = $("#aiChatBody");
+  if (!body) return;
+  window.requestAnimationFrame(() => {
+    body.scrollTop = body.scrollHeight;
+  });
+}
+
+function renderAiChat() {
+  const answer = $("#aiDockAnswer");
+  const panel = $("#aiDockPanel");
+  if (!answer) return;
+  panel?.classList.toggle("has-messages", state.aiMessages.length > 0);
+  answer.innerHTML = state.aiMessages.map((message) => `
+    <article class="ai-message ${message.role === "user" ? "user" : "assistant"}">
+      ${formatAiText(message.text)}
+    </article>
+  `).join("");
+  scrollAiChat();
+}
+
+function addAiMessage(role, text) {
+  state.aiMessages.push({ role, text });
+  renderAiChat();
+}
+
+function updateLastAssistantMessage(text) {
+  const last = state.aiMessages[state.aiMessages.length - 1];
+  if (last && last.role === "assistant") {
+    last.text = text;
+  } else {
+    state.aiMessages.push({ role: "assistant", text });
+  }
+  renderAiChat();
+}
+
+function toggleAiTools() {
+  const panel = $("#aiDockPanel");
+  const button = $("#aiDockMenu");
+  if (!panel || !button) return;
+  const open = !panel.classList.contains("tools-open");
+  panel.classList.toggle("tools-open", open);
+  button.setAttribute("aria-expanded", String(open));
+}
+
+function clearDockAi() {
+  state.aiMessages = [];
+  state.capturedHoldings = [];
+  $("#capturePreview").innerHTML = "";
+  $("#applyCaptureBtn").disabled = true;
+  $("#aiDockQuestion").value = "";
+  renderAiChat();
 }
 
 function fileToImagePayload(file) {
@@ -177,7 +245,6 @@ function captureDiff(item) {
 function renderCapturePreview(result) {
   state.capturedHoldings = result.holdings || [];
   const preview = $("#capturePreview");
-  const answer = $("#aiDockAnswer");
   const applyButton = $("#applyCaptureBtn");
   // 핵심 수정: provider의 실제 HTTP/status/error를 한도 문제로 뭉개지 않고 그대로 보여준다.
   const warnings = (result.warnings || []).map((warning) => String(warning));
@@ -185,14 +252,12 @@ function renderCapturePreview(result) {
     ? [`시도한 경로: ${result.attempts.join(" → ")}`]
     : [];
   const success = result.provider ? [`성공 경로: ${result.provider} ${result.model || ""}`.trim()] : [];
-  if (answer) {
-    answer.textContent = [
-      result.summary || "캡처 분석이 끝났습니다.",
-      ...success,
-      ...attempts,
-      ...warnings.map((warning) => `주의: ${warning}`),
-    ].join("\n");
-  }
+  updateLastAssistantMessage([
+    result.summary || "캡처 분석이 끝났습니다.",
+    ...success,
+    ...attempts,
+    ...warnings.map((warning) => `주의: ${warning}`),
+  ].join("\n"));
   if (!preview) return;
   preview.innerHTML = state.capturedHoldings.length ? state.capturedHoldings.map((item) => `
     <article>
@@ -202,11 +267,13 @@ function renderCapturePreview(result) {
     </article>
   `).join("") : `<p class='muted'>${warnings.length ? "AI 한도/키 문제로 캡처를 읽지 못했습니다. 계정 설정을 고치면 같은 화면에서 다시 시도할 수 있습니다." : "읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요."}</p>`;
   if (applyButton) applyButton.disabled = !state.capturedHoldings.length;
+  if (state.capturedHoldings.length) $("#aiDockPanel")?.classList.add("tools-open");
 }
 
 async function analyzeTossCapture(file) {
   if (!file) return;
-  $("#aiDockAnswer").textContent = "서버 AI 설정으로 캡처를 분석 중입니다...";
+  setAiDock(true);
+  addAiMessage("assistant", "서버 AI 설정으로 캡처를 분석 중입니다...");
   $("#applyCaptureBtn").disabled = true;
   const payload = await fileToImagePayload(file);
   const result = await requestJson("/api/capture", {
@@ -248,16 +315,20 @@ async function applyCapturedHoldings() {
     body: JSON.stringify(state.portfolio),
   });
   await loadAll();
+  addAiMessage("assistant", "캡처 기준으로 보유 종목을 반영했습니다.");
   toast("토스 캡처 기준으로 보이는 종목을 맞췄습니다.");
 }
 
 async function askDockAi() {
-  const question = $("#aiDockQuestion")?.value.trim();
+  const input = $("#aiDockQuestion");
+  const question = input?.value.trim();
   if (!question) {
-    $("#aiDockAnswer").textContent = "질문을 입력하거나 토스 캡처를 올려주세요.";
+    addAiMessage("assistant", "질문을 입력하거나 토스 캡처를 올려주세요.");
     return;
   }
-  $("#aiDockAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
+  input.value = "";
+  addAiMessage("user", question);
+  addAiMessage("assistant", "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...");
   try {
     const result = await requestJson("/api/ai", {
       method: "POST",
@@ -265,9 +336,9 @@ async function askDockAi() {
       body: JSON.stringify({ question, ...aiRequestPayload() }),
       timeoutMs: 18000,
     });
-    $("#aiDockAnswer").textContent = result.answer;
+    updateLastAssistantMessage(result.answer);
   } catch (error) {
-    $("#aiDockAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
+    updateLastAssistantMessage(`외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`);
   }
 }
 
@@ -1343,11 +1414,19 @@ document.querySelectorAll(".quick-prompts button").forEach((button) => {
 });
 $("#aiDockToggle")?.addEventListener("click", () => setAiDock($("#aiDockPanel")?.hidden));
 $("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
+$("#aiDockMenu")?.addEventListener("click", () => toggleAiTools());
+$("#aiDockClear")?.addEventListener("click", () => clearDockAi());
 $("#aiDockAsk")?.addEventListener("click", () => askDockAi());
+$("#aiDockQuestion")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    askDockAi();
+  }
+});
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   analyzeTossCapture(file).catch((error) => {
-    $("#aiDockAnswer").textContent = `캡처 분석 실패: ${error.message}`;
+    updateLastAssistantMessage(`캡처 분석 실패: ${error.message}`);
   });
 });
 $("#applyCaptureBtn")?.addEventListener("click", () => {

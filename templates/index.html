@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Briefolio</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260603-data-chat">
+    <link rel="stylesheet" href="/static/styles.css?v=20260603-chat-fix">
   </head>
   <body>
     <section id="landingPage" class="landing-page">
@@ -351,7 +351,7 @@
       </button>
       <section id="aiDockPanel" class="ai-dock-panel ai-chat-panel liquid-glass-container" hidden>
         <header class="ai-chat-topbar">
-          <button class="ai-chat-icon" type="button" aria-label="메뉴">☰</button>
+          <button id="aiDockMenu" class="ai-chat-icon" type="button" aria-label="캡처 도구" aria-expanded="false">☰</button>
           <div class="ai-chat-title">
             <strong>Briefolio AI</strong>
             <span>Gemini Flash</span>
@@ -359,18 +359,21 @@
           <button id="aiDockClose" class="ai-chat-close" type="button">닫기</button>
         </header>
 
-        <div class="ai-chat-body">
+        <div id="aiChatBody" class="ai-chat-body">
           <div class="ai-chat-empty" aria-hidden="true">
             <div class="ai-spark">✦</div>
-            <h2>우성님, 포트폴리오를 물어보세요</h2>
+            <h2>Briefolio에게 물어보세요</h2>
           </div>
-          <pre id="aiDockAnswer" class="answer compact-answer"></pre>
+          <div id="aiDockAnswer" class="answer compact-answer" role="log" aria-live="polite"></div>
           <div id="capturePreview" class="capture-preview"></div>
         </div>
 
         <div class="ai-chat-tools">
           <p class="ai-server-note">AI 키는 Cloudflare 서버 환경변수에서만 사용합니다.</p>
-          <button id="applyCaptureBtn" class="primary" type="button" disabled>캡처 기준으로 반영</button>
+          <div class="ai-tool-buttons">
+            <button id="aiDockClear" type="button">대화 지우기</button>
+            <button id="applyCaptureBtn" class="primary" type="button" disabled>캡처 기준으로 반영</button>
+          </div>
         </div>
 
         <div class="ai-chat-composer">
@@ -385,7 +388,7 @@
     </aside>
 
     <div id="toast" role="status"></div>
-    <script src="/static/app.js?v=20260603-data-chat"></script>
-    <script src="/static/landing.js?v=20260603-data-chat"></script>
+    <script src="/static/app.js?v=20260603-chat-fix"></script>
+    <script src="/static/landing.js?v=20260603-chat-fix"></script>
   </body>
 </html>
