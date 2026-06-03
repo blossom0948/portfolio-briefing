@@ -153,30 +153,43 @@ function formatAiText(text = "") {
     .replace(/\n/g, "<br>");
 }
 
-function scrollAiChat() {
+function focusLatestUserMessage() {
   const body = $("#aiChatBody");
   if (!body) return;
   window.requestAnimationFrame(() => {
-    body.scrollTop = body.scrollHeight;
+    const messages = body.querySelectorAll(".ai-message.user");
+    const last = messages[messages.length - 1];
+    if (!last) {
+      body.scrollTop = 0;
+      return;
+    }
+    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 12);
   });
 }
 
-function renderAiChat() {
+function renderAiChat({ keepScroll = true } = {}) {
   const answer = $("#aiDockAnswer");
   const panel = $("#aiDockPanel");
+  const body = $("#aiChatBody");
   if (!answer) return;
+  const previousScroll = body?.scrollTop || 0;
   panel?.classList.toggle("has-messages", state.aiMessages.length > 0);
   answer.innerHTML = state.aiMessages.map((message) => `
     <article class="ai-message ${message.role === "user" ? "user" : "assistant"}">
       ${formatAiText(message.text)}
     </article>
   `).join("");
-  scrollAiChat();
+  if (body && keepScroll) {
+    window.requestAnimationFrame(() => {
+      body.scrollTop = previousScroll;
+    });
+  }
 }
 
-function addAiMessage(role, text) {
+function addAiMessage(role, text, options = {}) {
   state.aiMessages.push({ role, text });
-  renderAiChat();
+  renderAiChat({ keepScroll: !options.focus });
+  if (options.focus) focusLatestUserMessage();
 }
 
 function updateLastAssistantMessage(text) {
@@ -270,7 +283,7 @@ function renderCapturePreview(result) {
   if (state.capturedHoldings.length) $("#aiDockPanel")?.classList.add("tools-open");
 }
 
-async function analyzeTossCapture(file) {
+async function analyzeBrokerCapture(file) {
   if (!file) return;
   setAiDock(true);
   addAiMessage("assistant", "서버 AI 설정으로 캡처를 분석 중입니다...");
@@ -316,18 +329,34 @@ async function applyCapturedHoldings() {
   });
   await loadAll();
   addAiMessage("assistant", "캡처 기준으로 보유 종목을 반영했습니다.");
-  toast("토스 캡처 기준으로 보이는 종목을 맞췄습니다.");
+  toast("캡처 기준으로 보이는 종목을 맞췄습니다.");
 }
 
 async function askDockAi() {
   const input = $("#aiDockQuestion");
   const question = input?.value.trim();
   if (!question) {
-    addAiMessage("assistant", "질문을 입력하거나 토스 캡처를 올려주세요.");
+    addAiMessage("assistant", "질문을 입력하거나 증권사 캡처를 올려주세요.");
     return;
   }
   input.value = "";
-  addAiMessage("user", question);
+  addAiMessage("user", question, { focus: true });
+  const tradeCommand = parseTradeCommand(question);
+  if (tradeCommand) {
+    addAiMessage("assistant", "매수 문장으로 인식했습니다. 현재가 기준 수량을 계산해서 보유 종목에 반영하는 중입니다...");
+    try {
+      const result = await applyTradeCommand(tradeCommand);
+      updateLastAssistantMessage([
+        `${result.holding.name} 매수를 반영했습니다.`,
+        `- 입력 금액: ${money(result.amount, result.amountCurrency)}`,
+        `- 적용 가격: ${money(result.price, result.quoteCurrency)}`,
+        `- 추가 수량: ${result.quantity.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주`,
+      ].join("\n"));
+    } catch (error) {
+      updateLastAssistantMessage(`매수 자동 반영에 실패했습니다.\n원인: ${error.message}`);
+    }
+    return;
+  }
   addAiMessage("assistant", "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...");
   try {
     const result = await requestJson("/api/ai", {
@@ -381,6 +410,116 @@ function marketLabel(asset) {
 
 function findSnapshotItem(item) {
   return (state.snapshot?.holdings || []).find((row) => row.id === item.id || (row.symbol === item.symbol && row.market === item.market));
+}
+
+const TRADE_ASSET_ALIASES = [
+  { keys: ["애플", "apple", "aapl"], name: "Apple", symbol: "AAPL", market: "US" },
+  { keys: ["엔비디아", "nvidia", "nvda"], name: "NVIDIA", symbol: "NVDA", market: "US" },
+  { keys: ["삼성전자", "삼전", "005930"], name: "삼성전자", symbol: "005930", market: "KR" },
+  { keys: ["네이버", "naver", "035420"], name: "NAVER", symbol: "035420", market: "KR" },
+  { keys: ["qqqm"], name: "QQQM", symbol: "QQQM", market: "US" },
+  { keys: ["voo"], name: "VOO", symbol: "VOO", market: "US" },
+];
+
+function compactKoreanText(value = "") {
+  return String(value).toLowerCase().replace(/\s+/g, "");
+}
+
+function parseMoneyCommand(text = "") {
+  const normalized = String(text).replace(/,/g, "");
+  let match = normalized.match(/\$\s*(\d+(?:\.\d+)?)/i)
+    || normalized.match(/(\d+(?:\.\d+)?)\s*(달러|불|usd)/i);
+  if (match) return { amount: Number(match[1]), currency: "USD" };
+
+  match = normalized.match(/(\d+(?:\.\d+)?)\s*(억|천만|만|천)?\s*원/);
+  if (!match) return null;
+
+  const multiplier = { 억: 100000000, 천만: 10000000, 만: 10000, 천: 1000 }[match[2]] || 1;
+  return { amount: Number(match[1]) * multiplier, currency: "KRW" };
+}
+
+function resolveTradeAsset(question = "") {
+  const compact = compactKoreanText(question);
+  const holdings = state.portfolio?.holdings || [];
+  const existing = holdings.find((item) => {
+    const symbol = compactKoreanText(item.symbol);
+    const name = compactKoreanText(item.name);
+    return (symbol && compact.includes(symbol)) || (name && compact.includes(name));
+  });
+  if (existing) return existing;
+
+  return TRADE_ASSET_ALIASES.find((asset) => asset.keys.some((key) => compact.includes(compactKoreanText(key)))) || null;
+}
+
+function parseTradeCommand(question = "") {
+  const compact = compactKoreanText(question);
+  if (!/(샀|삿|매수|구매|추가|담았|담앗)/.test(compact)) return null;
+  const moneyCommand = parseMoneyCommand(question);
+  if (!moneyCommand || !moneyCommand.amount) return null;
+  const asset = resolveTradeAsset(question);
+  if (!asset) return null;
+  return { asset, ...moneyCommand };
+}
+
+async function discoverTradePrice(asset) {
+  const category = asset.market === "KR" ? "kr" : "us";
+  const data = await requestJson(`/api/discover?category=${category}&q=${encodeURIComponent(asset.symbol)}&limit=3`);
+  const found = (data.items || []).find((item) => item.symbol === asset.symbol && item.market === asset.market) || data.items?.[0];
+  if (!found || !Number(found.close || 0)) throw new Error(`${asset.name || asset.symbol} 현재가를 찾지 못했습니다.`);
+  state.discover.usd_krw_rate = Number(data.usd_krw_rate || state.discover.usd_krw_rate || 0);
+  return { close: Number(found.close), currency: found.currency || (asset.market === "KR" ? "KRW" : "USD") };
+}
+
+async function ensureTradeHolding(asset) {
+  if (!state.portfolio) state.portfolio = await requestJson("/api/portfolio");
+  const holdings = state.portfolio?.holdings || [];
+  const existing = holdings.find((item) => item.symbol === asset.symbol && item.market === asset.market);
+  if (existing) return existing;
+
+  const created = await requestJson("/api/holdings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: asset.name || asset.symbol,
+      symbol: asset.symbol,
+      market: asset.market,
+      quantity: 0,
+      average_price: 0,
+      average_price_currency: asset.market === "KR" ? "KRW" : "USD",
+      plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 0, currency: "KRW", memo: "" },
+      transactions: [],
+    }),
+  });
+  state.portfolio.holdings = [...holdings, created];
+  return created;
+}
+
+async function applyTradeCommand(command) {
+  const holding = await ensureTradeHolding(command.asset);
+  const quoteCurrency = holding.market === "KR" ? "KRW" : "USD";
+  const snapshotItem = findSnapshotItem(holding);
+  const priceData = Number(snapshotItem?.close || 0)
+    ? { close: Number(snapshotItem.close), currency: snapshotItem.currency || quoteCurrency }
+    : await discoverTradePrice(holding);
+  const priceQuote = convertAmount(priceData.close, priceData.currency, quoteCurrency);
+  const amountQuote = convertAmount(command.amount, command.currency, quoteCurrency);
+  const quantity = priceQuote ? amountQuote / priceQuote : 0;
+  if (!quantity) throw new Error("현재가 기준 수량을 계산하지 못했습니다.");
+
+  const updated = await requestJson(`/api/holdings/${holding.id}/transactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      side: "buy",
+      quantity: Number(quantity.toFixed(8)),
+      price: Number(priceQuote.toFixed(4)),
+      price_currency: quoteCurrency,
+      date: todayKst(),
+      memo: "AI 대화 자동 반영",
+    }),
+  });
+  await loadAll();
+  return { holding: updated, quantity, price: priceQuote, quoteCurrency, amount: command.amount, amountCurrency: command.currency };
 }
 
 function planExecutionPreview(item) {
@@ -1425,7 +1564,7 @@ $("#aiDockQuestion")?.addEventListener("keydown", (event) => {
 });
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
-  analyzeTossCapture(file).catch((error) => {
+  analyzeBrokerCapture(file).catch((error) => {
     updateLastAssistantMessage(`캡처 분석 실패: ${error.message}`);
   });
 });

@@ -2129,3 +2129,79 @@ pre.answer {
     flex: 1 1 140px;
   }
 }
+
+/* Final chat polish: compact user bubbles, centered empty state, full answer scroll. */
+.ai-dock-panel.ai-chat-panel {
+  display: flex;
+  max-height: calc(100dvh - 104px);
+}
+
+.ai-chat-body {
+  display: grid;
+  grid-template-rows: minmax(0, auto);
+  align-content: stretch;
+  padding: 20px 10px 34px;
+  scroll-padding: 18px 0 96px;
+  overscroll-behavior: contain;
+}
+
+.ai-chat-empty {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  padding-bottom: clamp(28px, 8dvh, 96px);
+}
+
+.compact-answer {
+  align-items: start;
+  gap: 16px;
+  padding-bottom: 48px;
+}
+
+.ai-message {
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
+.ai-message.user {
+  width: fit-content;
+  inline-size: fit-content;
+  max-width: min(72%, 420px);
+  max-inline-size: min(72%, 420px);
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 22px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.ai-message.assistant {
+  max-width: calc(100% - 8px);
+}
+
+.ai-message.assistant:last-child {
+  padding-bottom: 76px;
+}
+
+.ai-chat-composer {
+  align-items: center;
+}
+
+.ai-chat-panel textarea#aiDockQuestion {
+  align-self: center;
+  height: 44px;
+  min-height: 44px;
+  line-height: 22px;
+  padding: 11px 6px;
+}
+
+@media (max-width: 760px) {
+  .ai-dock-panel.ai-chat-panel {
+    max-height: calc(100dvh - 90px);
+  }
+
+  .ai-message.user {
+    max-width: min(78%, 340px);
+    max-inline-size: min(78%, 340px);
+  }
+}
