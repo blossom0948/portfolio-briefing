@@ -4,6 +4,28 @@ function providerProblem(message = "") {
   return /quota|billing|insufficient|rate limit|api key|invalid|timeout|timed out|할당량|결제|호출 실패/i.test(message);
 }
 
+function sanitizeError(message = "") {
+  return String(message)
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-***")
+    .replace(/AIza[A-Za-z0-9_-]+/g, "AIza***")
+    .slice(0, 800);
+}
+
+function friendlyProviderError(provider, message = "") {
+  const text = sanitizeError(message);
+  const lowered = text.toLowerCase();
+  if (provider === "Gemini" && lowered.includes("free_tier") && lowered.includes("limit: 0")) {
+    return "Gemini API 무료 할당량이 현재 0으로 막혀 있습니다. Cloudflare 환경변수에 OPENAI_API_KEY를 추가하거나, Google AI Studio/Cloud에서 Gemini 결제/쿼터를 활성화해야 합니다.";
+  }
+  if (lowered.includes("quota") || lowered.includes("rate-limit") || lowered.includes("rate limit")) {
+    return `${provider} 사용량 한도에 걸렸습니다. 다른 provider 서버키를 Cloudflare 환경변수에 추가하거나 해당 provider의 결제/쿼터 설정을 확인해야 합니다.`;
+  }
+  if (lowered.includes("incorrect api key") || lowered.includes("invalid api key") || lowered.includes("unauthorized")) {
+    return `${provider} API 키가 잘못되었습니다. Cloudflare Pages 환경변수에 들어간 키를 다시 확인해야 합니다.`;
+  }
+  return text;
+}
+
 async function withTimeout(promiseFactory, ms = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -92,7 +114,7 @@ export async function onRequestPost({ request, env }) {
         return json({ answer: await askOpenAI(env, prompt) });
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        warnings.push(`OpenAI: ${error.message}`);
+        warnings.push(`OpenAI: ${friendlyProviderError("OpenAI", error.message)}`);
       }
     }
     if (env.GEMINI_API_KEY) {
@@ -100,7 +122,7 @@ export async function onRequestPost({ request, env }) {
         return json({ answer: await askGemini(env, prompt) });
       } catch (error) {
         if (!providerProblem(error.message)) throw error;
-        warnings.push(`Gemini: ${error.message}`);
+        warnings.push(`Gemini: ${friendlyProviderError("Gemini", error.message)}`);
       }
     }
     return json({ answer: localProjection(question, snapshot, warnings.length ? `외부 AI 문제: ${warnings.join(" / ")}` : "AI 키가 없어 내장 계산 모드로 답합니다.") });

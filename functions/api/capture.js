@@ -17,6 +17,21 @@ function sanitizeError(message = "") {
     .slice(0, 800);
 }
 
+function friendlyProviderError(provider, message = "") {
+  const text = sanitizeError(message);
+  const lowered = text.toLowerCase();
+  if (provider === "gemini" && lowered.includes("free_tier") && lowered.includes("limit: 0")) {
+    return "Gemini API 무료 할당량이 현재 0으로 막혀 있습니다. Cloudflare 환경변수에 OPENAI_API_KEY를 추가하거나, Google AI Studio/Cloud에서 Gemini 결제/쿼터를 활성화해야 합니다.";
+  }
+  if (lowered.includes("quota") || lowered.includes("rate-limit") || lowered.includes("rate limit")) {
+    return `${provider} 사용량 한도에 걸렸습니다. 다른 provider 서버키를 Cloudflare 환경변수에 추가하거나 해당 provider의 결제/쿼터 설정을 확인해야 합니다.`;
+  }
+  if (lowered.includes("incorrect api key") || lowered.includes("invalid api key") || lowered.includes("unauthorized")) {
+    return `${provider} API 키가 잘못되었습니다. Cloudflare Pages 환경변수에 들어간 키를 다시 확인해야 합니다.`;
+  }
+  return text;
+}
+
 function parseJsonText(text = "") {
   const cleaned = String(text)
     .replace(/^```json\s*/i, "")
@@ -193,7 +208,7 @@ export async function onRequestPost({ request, env }) {
         });
       } catch (error) {
         // 핵심 수정: quota로 뭉개지 않고 실제 provider/status/error를 그대로 보여준다.
-        warnings.push(`${label}: ${sanitizeError(error.message)}`);
+        warnings.push(`${label}: ${friendlyProviderError(config.provider, error.message)}`);
       }
     }
 
