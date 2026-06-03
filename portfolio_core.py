@@ -829,9 +829,43 @@ def translate_text(text: str) -> str:
         return text
 
 
-def is_relevant_overseas_news(item: dict[str, str]) -> bool:
+BAD_OVERSEAS_NEWS_TERMS = [
+    "football",
+    "soccer",
+    "villa",
+    "liverpool",
+    "match preview",
+    "season tickets",
+    "nba",
+    "nfl",
+    "mlb",
+    "lottery",
+]
+
+
+def holding_news_terms(holding: dict[str, Any]) -> list[str]:
+    symbol = str(holding.get("symbol") or "").lower()
+    name = str(holding.get("name") or "").lower()
+    terms = [term for term in [symbol, name] if term]
+    if symbol == "qqqm":
+        terms.extend(["invesco", "nasdaq 100", "nasdaq-100", "qqq"])
+    if symbol == "voo":
+        terms.extend(["vanguard", "s&p 500", "sp 500", "s&p"])
+    if symbol == "nvda" or "nvidia" in name:
+        terms.append("nvidia")
+    if symbol == "aapl" or "apple" in name:
+        terms.append("apple")
+    return sorted({term for term in terms if len(term) >= 2})
+
+
+def is_relevant_overseas_news(item: dict[str, str], holdings: list[dict[str, Any]] | None = None) -> bool:
     title = f"{item.get('title', '')} {item.get('title_ko', '')}".lower()
-    terms = ["qqqm", "voo", "vanguard", "invesco", "nasdaq", "s&p 500", "sp 500", "s&p"]
+    if any(term in title for term in BAD_OVERSEAS_NEWS_TERMS):
+        return False
+    if holdings:
+        terms = sorted({term for holding in holdings for term in holding_news_terms(holding)})
+    else:
+        terms = ["qqqm", "voo", "vanguard", "invesco", "nasdaq", "s&p 500", "sp 500", "s&p"]
     return any(term in title for term in terms)
 
 
@@ -1143,13 +1177,14 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
                 break
     overseas = []
     seen = set()
-    us_symbols = [item["symbol"] for item in holdings if item["market"] == "US"] or ["QQQM", "VOO"]
+    us_holdings = [item for item in holdings if item["market"] == "US"] or [
+        {"symbol": "QQQM", "name": "QQQM", "market": "US"},
+        {"symbol": "VOO", "name": "VOO", "market": "US"},
+    ]
     fallback_queries = [
-        *(f"{symbol} ETF" for symbol in us_symbols),
-        "Invesco NASDAQ 100 ETF",
-        "Vanguard S&P 500 ETF",
-        "Nasdaq 100 ETF market",
-        "S&P 500 ETF market",
+        *(f"{item['symbol']} stock" for item in us_holdings),
+        *(f"{item['name']} stock" for item in us_holdings if item.get("name")),
+        *(f"{item['symbol']} ETF" for item in us_holdings if item["symbol"] in {"QQQM", "VOO", "QQQ", "SPY"}),
     ]
     for query in fallback_queries:
         if len(overseas) >= limit_each:
@@ -1163,7 +1198,7 @@ def get_news(limit_each: int = 3) -> dict[str, list[dict[str, str]]]:
             ceid="US:en",
             translate=True,
         ):
-            if not is_relevant_overseas_news(item):
+            if not is_relevant_overseas_news(item, us_holdings):
                 continue
             key = news_fingerprint(item)
             if key in seen:
@@ -1195,7 +1230,7 @@ def format_change(item: dict[str, Any]) -> str:
         change = f"{sign}${abs(float(item['change'])):,.2f}"
         if krw_change is not None:
             change += f" / {sign}{abs(float(krw_change)):,.0f}원"
-    pct = f"{sign}{abs(float(item['change_pct']))}%"
+    pct = f"{sign}{abs(float(item['change_pct'])):.2f}%"
     return f"{format_money(item['close'], item['currency'], item.get('usd_krw_rate'), dual=True)} ({change}, {pct})"
 
 
@@ -1224,7 +1259,7 @@ def action_notes(snapshot: dict[str, Any], news_items: list[dict[str, str]] | No
 
     if biggest_move and abs(float(biggest_move.get("change_pct") or 0)) >= 3:
         direction = "올랐습니다" if biggest_move["change_pct"] > 0 else "내렸습니다"
-        notes.append(f"{biggest_move['name']}가 오늘 {biggest_move['change_pct']}% {direction}. 새 매수보다 왜 움직였는지 뉴스와 거래량을 먼저 확인하세요.")
+        notes.append(f"{biggest_move['name']}가 전 거래일 종가 대비 {float(biggest_move['change_pct']):.2f}% {direction}. 새 매수보다 왜 움직였는지 뉴스와 거래량을 먼저 확인하세요.")
     elif holdings:
         notes.append("오늘 가격 변동은 아주 크지 않습니다. 성급하게 바꾸기보다 기존 적립 계획을 유지해도 되는 날입니다.")
 
@@ -1263,7 +1298,7 @@ def build_briefing_text() -> str:
         f"[포트폴리오 브리핑] {now_kst().strftime('%Y-%m-%d')}",
         f"환율: 1달러 ≈ {snapshot.get('usd_krw_rate', 0):,.2f}원",
         "",
-        "가격 요약",
+        "가격 요약 (전 거래일 종가 대비)",
     ]
     total_converted = snapshot.get("totals", {}).get("KRW_CONVERTED", 0)
     if total_converted:

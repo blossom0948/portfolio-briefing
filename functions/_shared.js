@@ -349,7 +349,7 @@ export async function buildLiveBriefing(env, reason = "현재 데이터로 즉�
     `[포트폴리오 브리핑] ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     reason,
     "",
-    "가격 요약",
+    "가격 요약 (전 거래일 종가 대비)",
   ];
   for (const item of snapshot.holdings || []) {
     if (item.error) {
@@ -362,8 +362,8 @@ export async function buildLiveBriefing(env, reason = "현재 데이터로 즉�
   }
   lines.push("");
   lines.push("그래서 오늘 해야 할 것");
-  lines.push("- 웹에 저장된 메일 브리핑이 아직 없어서 실시간 가격 중심으로 보여드립니다.");
-  lines.push("- GitHub Actions가 다음에 실행되면 메일 본문도 이 화면에 저장되어 표시됩니다.");
+  lines.push("- 저장된 메일 본문이 없으면 현재 가격 기준으로 임시 브리핑을 보여줍니다.");
+  lines.push("- GitHub Actions가 메일을 보낼 때 Apps Script에 본문을 같이 저장해야 이 화면에 같은 내용이 표시됩니다.");
   lines.push("- 주식 모으기 설정을 바꾸면 다음 브리핑부터 반영됩니다.");
   return { text: lines.join("\n"), updatedAt: new Date().toISOString(), generated: true };
 }

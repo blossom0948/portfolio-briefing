@@ -186,6 +186,18 @@ function focusLatestUserMessage() {
   });
 }
 
+function focusLatestAssistantMessage() {
+  const body = $("#aiChatBody");
+  if (!body) return;
+  window.requestAnimationFrame(() => {
+    const messages = body.querySelectorAll(".ai-message.assistant");
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    // 답변이 길어도 마지막 줄이 아니라 답변 첫 줄부터 보이게 맞춘다.
+    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 12);
+  });
+}
+
 function renderAiChat({ keepScroll = true } = {}) {
   const answer = $("#aiDockAnswer");
   const panel = $("#aiDockPanel");
@@ -219,6 +231,7 @@ function updateLastAssistantMessage(text) {
     state.aiMessages.push({ role: "assistant", text });
   }
   renderAiChat();
+  focusLatestAssistantMessage();
 }
 
 function toggleAiTools() {
@@ -362,21 +375,25 @@ async function askDockAi() {
   addAiMessage("user", question, { focus: true });
   const tradeCommand = parseTradeCommand(question);
   if (tradeCommand) {
-    addAiMessage("assistant", "매수 문장으로 인식했습니다. 현재가 기준 수량을 계산해서 보유 종목에 반영하는 중입니다...");
+    const tradeLabel = tradeCommand.side === "sell" ? "매도" : "매수";
+    addAiMessage("assistant", `${tradeLabel} 문장으로 인식했습니다. 현재가 기준 수량을 계산해서 보유 종목에 반영하는 중입니다...`);
     try {
       const result = await applyTradeCommand(tradeCommand);
       const inputLine = tradeCommand.quantity
         ? `- 입력 수량: ${quantity(result.quantity)}주`
         : `- 입력 금액: ${money(result.amount, result.amountCurrency)}`;
+      const resultLabel = result.side === "sell" ? "매도" : "매수";
+      const quantityLabel = result.side === "sell" ? "차감 수량" : "추가 수량";
       updateLastAssistantMessage([
-        `${result.holding.name} 매수를 반영했습니다.`,
+        `${result.holding.name} ${resultLabel}를 반영했습니다.`,
         inputLine,
         `- 계산 금액: ${money(result.amount, result.amountCurrency)}`,
         `- 적용 가격: ${money(result.price, result.quoteCurrency)}`,
-        `- 추가 수량: ${quantity(result.quantity)}주`,
+        `- ${quantityLabel}: ${quantity(result.quantity)}주`,
+        `- 남은 수량: ${quantity(result.holding.quantity || 0)}주`,
       ].join("\n"));
     } catch (error) {
-      updateLastAssistantMessage(`매수 자동 반영에 실패했습니다.\n원인: ${error.message}`);
+      updateLastAssistantMessage(`거래 자동 반영에 실패했습니다.\n원인: ${error.message}`);
     }
     return;
   }
@@ -482,13 +499,15 @@ function resolveTradeAsset(question = "") {
 
 function parseTradeCommand(question = "") {
   const compact = compactKoreanText(question);
-  if (!/(샀|삿|사줘|사|매수|구매|추가|담았|담앗|담아)/.test(compact)) return null;
+  const isSell = /(팔았|팔앗|팔아|팔|매도|정리|지워|삭제|빼줘|뺐|뺏)/.test(compact);
+  const isBuy = /(샀|삿|사줘|사|매수|구매|추가|담았|담앗|담아)/.test(compact);
+  if (!isBuy && !isSell) return null;
   const moneyCommand = parseMoneyCommand(question);
   const quantityCommand = parseQuantityCommand(question);
   if ((!moneyCommand || !moneyCommand.amount) && !quantityCommand) return null;
   const asset = resolveTradeAsset(question);
   if (!asset) return null;
-  return { asset, ...(moneyCommand || {}), quantity: quantityCommand || null };
+  return { side: isSell ? "sell" : "buy", asset, ...(moneyCommand || {}), quantity: quantityCommand || null };
 }
 
 async function discoverTradePrice(asset) {
@@ -500,11 +519,12 @@ async function discoverTradePrice(asset) {
   return { close: Number(found.close), currency: found.currency || (asset.market === "KR" ? "KRW" : "USD") };
 }
 
-async function ensureTradeHolding(asset) {
+async function ensureTradeHolding(asset, options = {}) {
   if (!state.portfolio) state.portfolio = await requestJson("/api/portfolio");
   const holdings = state.portfolio?.holdings || [];
   const existing = holdings.find((item) => item.symbol === asset.symbol && item.market === asset.market);
   if (existing) return existing;
+  if (options.create === false) throw new Error(`${asset.name || asset.symbol} 보유 종목을 찾지 못했습니다.`);
 
   const created = await requestJson("/api/holdings", {
     method: "POST",
@@ -525,7 +545,8 @@ async function ensureTradeHolding(asset) {
 }
 
 async function applyTradeCommand(command) {
-  const holding = await ensureTradeHolding(command.asset);
+  const side = command.side === "sell" ? "sell" : "buy";
+  const holding = await ensureTradeHolding(command.asset, { create: side !== "sell" });
   const quoteCurrency = holding.market === "KR" ? "KRW" : "USD";
   const snapshotItem = findSnapshotItem(holding);
   const priceData = Number(snapshotItem?.close || 0)
@@ -540,7 +561,7 @@ async function applyTradeCommand(command) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      side: "buy",
+      side,
       quantity: Number(quantity.toFixed(8)),
       price: Number(priceQuote.toFixed(4)),
       price_currency: quoteCurrency,
@@ -549,7 +570,7 @@ async function applyTradeCommand(command) {
     }),
   });
   await loadAll();
-  return { holding: updated, quantity, price: priceQuote, quoteCurrency, amount: command.amount || (quantity * priceQuote), amountCurrency: command.currency || quoteCurrency };
+  return { side, holding: updated, quantity, price: priceQuote, quoteCurrency, amount: command.amount || (quantity * priceQuote), amountCurrency: command.currency || quoteCurrency };
 }
 
 function planExecutionPreview(item) {
@@ -915,7 +936,7 @@ function renderBriefHighlights(snapshot) {
     .sort((a, b) => b.change_pct - a.change_pct)[0];
   $("#briefHighlights").innerHTML = `
     <div><span>대표 종목</span><strong>${first ? first.name : "-"}</strong></div>
-    <div><span>오늘 강한 종목</span><strong>${strongest ? `${strongest.name} ${strongest.change_pct}%` : "-"}</strong></div>
+    <div><span>오늘 강한 종목</span><strong>${strongest ? `${strongest.name} ${percent(strongest.change_pct)}` : "-"}</strong></div>
     <div><span>모으기</span><strong>${snapshot.active_plans}개 진행</strong></div>
   `;
 }
@@ -929,6 +950,7 @@ function fillSettings(portfolio) {
 }
 
 function showView(name) {
+  if (name === "settings") name = "briefing";
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   const nextView = document.querySelector(`#view-${name}`);
   if (!nextView) return;
@@ -1540,11 +1562,11 @@ $("#settingsForm").addEventListener("submit", async (event) => {
   }
 });
 
-$("#exampleQuestionBtn").addEventListener("click", () => {
+$("#exampleQuestionBtn")?.addEventListener("click", () => {
   $("#aiQuestion").value = "삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?";
 });
 
-$("#askAiBtn").addEventListener("click", async () => {
+$("#askAiBtn")?.addEventListener("click", async () => {
   const question = $("#aiQuestion").value.trim();
   if (!question) {
     $("#aiAnswer").textContent = "질문을 입력하세요.";

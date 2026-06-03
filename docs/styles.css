@@ -2467,3 +2467,224 @@ pre.answer {
     width: calc(100vw - 24px);
   }
 }
+
+/* 2026-06-04 polish: compact chat bubbles, balanced grids, and safer news wrapping. */
+.briefing-control-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.75fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.brief-mail-panel,
+.panel,
+.news-list,
+.news-item {
+  min-width: 0;
+}
+
+.brief-mail-panel #briefingText {
+  min-height: 360px;
+}
+
+.briefing-control-grid .settings-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.7fr);
+  gap: 12px;
+}
+
+.briefing-control-grid .settings-grid label:first-child,
+.briefing-control-grid .settings-grid label:nth-child(3),
+.briefing-control-grid .settings-grid button {
+  grid-column: 1 / -1;
+}
+
+.briefing-control-grid .settings-grid button {
+  justify-self: stretch;
+}
+
+.brief-highlights strong {
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.news-list.compact {
+  display: grid;
+  gap: 10px;
+}
+
+.news-list.compact .news-item,
+.news-item {
+  display: block;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.news-item a {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+  line-height: 1.35;
+}
+
+.holding-grid {
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+  align-items: stretch;
+}
+
+@media (min-width: 1180px) {
+  .holding-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.holding-card {
+  min-width: 0;
+}
+
+.discover-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 10px;
+}
+
+.discover-item {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 28px 40px minmax(0, 1fr) minmax(116px, auto) auto;
+  justify-content: stretch;
+  align-items: center;
+}
+
+.discover-copy,
+.discover-price {
+  min-width: 0;
+}
+
+.discover-price {
+  justify-self: end;
+  text-align: right;
+}
+
+.discover-price b,
+.discover-price span {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.discover-item button {
+  grid-column: auto;
+  justify-self: end;
+}
+
+.plan-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(420px, 1fr));
+  gap: 12px;
+}
+
+.plan-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 16px;
+}
+
+.plan-row > div:first-child,
+.plan-execute-row {
+  grid-column: 1 / -1;
+}
+
+.plan-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.plan-row > div:first-child span {
+  white-space: nowrap;
+}
+
+.plan-row button[type="submit"] {
+  justify-self: end;
+}
+
+.plan-execute-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.ai-dock-panel.ai-chat-panel .compact-answer > .ai-message.user {
+  display: inline-flex !important;
+  width: auto !important;
+  inline-size: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  aspect-ratio: auto !important;
+  max-width: min(72%, 520px) !important;
+  max-inline-size: min(72%, 520px) !important;
+  justify-self: end;
+  align-items: center;
+  padding: 9px 14px;
+  border-radius: 20px;
+  line-height: 1.38;
+  white-space: pre-wrap;
+}
+
+.ai-dock-panel.ai-chat-panel .compact-answer > .ai-message.assistant {
+  width: 100%;
+  max-width: 100%;
+  padding-bottom: 28px;
+}
+
+@media (max-width: 980px) {
+  .briefing-control-grid,
+  .discover-list,
+  .plan-list {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-row {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-row button[type="submit"] {
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 760px) {
+  .news-list.compact .news-item,
+  .news-item {
+    border-radius: 18px;
+    padding: 10px 12px;
+  }
+
+  .discover-item {
+    grid-template-columns: 28px 38px minmax(0, 1fr) auto;
+  }
+
+  .discover-price {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: start;
+    text-align: left;
+  }
+
+  .discover-item button {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+  }
+
+  .ai-dock-panel.ai-chat-panel .compact-answer > .ai-message.user {
+    max-width: min(78%, 320px) !important;
+    max-inline-size: min(78%, 320px) !important;
+  }
+}
