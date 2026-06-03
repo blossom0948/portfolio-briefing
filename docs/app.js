@@ -1,209 +1,23 @@
-const defaults = {
-  settings: { recipient: "blossom0948@gmail.com", send_time: "07:00", timezone: "Asia/Seoul" },
-  holdings: [],
+const state = {
+  portfolio: null,
+  snapshot: null,
+  briefing: "",
+  discover: { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 },
+  capturedHoldings: [],
 };
 
-let portfolio = structuredClone(defaults);
-let snapshot = null;
-let lastBriefing = { text: "" };
-const discoverState = { category: "us", items: [], selected: null, loading: false, usd_krw_rate: 0 };
-let capturedHoldings = [];
 const $ = (selector) => document.querySelector(selector);
-const days = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
-
-function toast(message) {
-  const el = $("#toast");
-  el.textContent = message;
-  el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 2600);
-}
-
-async function requestJson(url, options) {
-  const requestOptions = options ? { ...options } : {};
-  const timeoutMs = requestOptions.timeoutMs;
-  delete requestOptions.timeoutMs;
-  let timer = null;
-  if (timeoutMs) {
-    const controller = new AbortController();
-    requestOptions.signal = controller.signal;
-    timer = setTimeout(() => controller.abort(), timeoutMs);
-  }
-  try {
-    const response = await fetch(url, requestOptions);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || data.answer || response.statusText);
-    return data;
-  } catch (error) {
-    if (error.name === "AbortError") throw new Error("AI 응답 시간이 길어 내장 계산 모드로 전환합니다.");
-    throw error;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-function setAiDock(open) {
-  const panel = $("#aiDockPanel");
-  const button = $("#aiDockToggle");
-  if (!panel || !button) return;
-  panel.hidden = !open;
-  button.setAttribute("aria-expanded", String(open));
-}
-
-function fileToImagePayload(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("이미지를 읽지 못했습니다."));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
-      image.onload = () => {
-        const maxSide = 1600;
-        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-        const context = canvas.getContext("2d");
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
-        const dataUrl = canvas.toDataURL(mimeType, 0.88);
-        resolve({ image: dataUrl.split(",")[1], mimeType });
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function captureDiff(item) {
-  const current = portfolio.holdings.find((holding) => holding.symbol === item.symbol && holding.market === item.market);
-  if (!current) return "새 종목";
-  const currentQty = Number(current.quantity || 0);
-  const nextQty = Number(item.quantity || 0);
-  const qtyDiff = nextQty - currentQty;
-  if (Math.abs(qtyDiff) < 0.000001) return "수량 같음";
-  return `${qtyDiff > 0 ? "+" : ""}${qtyDiff.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주 보정`;
-}
-
-function renderCapturePreview(result) {
-  capturedHoldings = result.holdings || [];
-  const preview = $("#capturePreview");
-  const answer = $("#aiDockAnswer");
-  const applyButton = $("#applyCaptureBtn");
-  const warnings = (result.warnings || []).map(friendlyWarning);
-  if (answer) {
-    answer.textContent = [
-      result.summary || "캡처 분석이 끝났습니다.",
-      ...warnings.map((warning) => `주의: ${warning}`),
-    ].join("\n");
-  }
-  if (!preview) return;
-  preview.innerHTML = capturedHoldings.length ? capturedHoldings.map((item) => `
-    <article>
-      <strong>${escapeHtml(item.name || item.symbol)} <span class="muted">${escapeHtml(item.symbol)} · ${escapeHtml(item.market)}</span></strong>
-      <span>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주</span>
-      <small>${captureDiff(item)}</small>
-    </article>
-  `).join("") : `<p class='muted'>${warnings.length ? "AI 한도/키 문제로 캡처를 읽지 못했습니다. 계정 설정을 고치면 같은 화면에서 다시 시도할 수 있습니다." : "읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요."}</p>`;
-  if (applyButton) applyButton.disabled = !capturedHoldings.length;
-}
-
-async function analyzeTossCapture(file) {
-  if (!file) return;
-  $("#aiDockAnswer").textContent = "캡처를 가볍게 줄이고 AI가 종목, 수량, 평단을 읽는 중입니다...";
-  $("#applyCaptureBtn").disabled = true;
-  const payload = await fileToImagePayload(file);
-  const result = await requestJson("/api/capture", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  renderCapturePreview(result);
-}
-
-async function applyCapturedHoldings() {
-  if (!capturedHoldings.length) return;
-  syncFromForms();
-  for (const captured of capturedHoldings) {
-    let item = portfolio.holdings.find((holding) => holding.symbol === captured.symbol && holding.market === captured.market);
-    if (!item) {
-      item = {
-        id: `${captured.market.toLowerCase()}-${captured.symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-        name: captured.name || captured.symbol,
-        symbol: captured.symbol,
-        market: captured.market,
-        quantity: 0,
-        average_price: 0,
-        average_price_currency: captured.market === "KR" ? "KRW" : "USD",
-        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" },
-        transactions: [],
-      };
-      portfolio.holdings.push(item);
-    }
-    item.name = captured.name || item.name;
-    item.quantity = Number(Number(captured.quantity || 0).toFixed(8));
-    if (Number(captured.average_price || 0) > 0) {
-      item.average_price = Number(captured.average_price || 0);
-      item.average_price_currency = captured.average_price_currency || (captured.market === "KR" ? "KRW" : "USD");
-    }
-  }
-  await requestJson("/api/config", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(portfolio),
-  });
-  await loadAll();
-  toast("토스 캡처 기준으로 보이는 종목을 맞췄습니다.");
-}
-
-async function askDockAi() {
-  const question = $("#aiDockQuestion")?.value.trim();
-  if (!question) {
-    $("#aiDockAnswer").textContent = "질문을 입력하거나 토스 캡처를 올려주세요.";
-    return;
-  }
-  $("#aiDockAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
-  try {
-    const result = await requestJson("/api/ai", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
-      timeoutMs: 18000,
-    });
-    $("#aiDockAnswer").textContent = result.answer;
-  } catch (error) {
-    $("#aiDockAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
-  }
-}
-
-function maybeLoadDiscovery() {
-  if (!$("#discoverResults") || discoverState.items.length || discoverState.loading) return;
-  loadDiscovery().catch(() => {
-    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
-  });
-}
-
-function showView(name) {
-  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
-  const nextView = document.querySelector(`#view-${name}`);
-  if (!nextView) return;
-  nextView.classList.add("active");
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
-  if (name === "pro") renderPro();
-  if (name === "manage") maybeLoadDiscovery();
-}
-
-document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
 
 function fxRate() {
-  return Number(snapshot?.usd_krw_rate || discoverState.usd_krw_rate || 0);
+  return Number(state.snapshot?.usd_krw_rate || state.discover.usd_krw_rate || 0);
 }
 
 function money(value, currency, options = {}) {
-  const amount = Number(value || 0);
-  if (currency === "KRW") return `${Math.round(amount).toLocaleString("ko-KR")}원`;
-  const usd = `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (value === null || value === undefined) return "-";
+  if (currency === "KRW") return `${Math.round(value).toLocaleString("ko-KR")}원`;
+  const usd = `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (options.dual === false || !fxRate()) return usd;
-  return `${usd} · 약 ${Math.round(amount * fxRate()).toLocaleString("ko-KR")}원`;
+  return `${usd} · 약 ${Math.round(Number(value) * fxRate()).toLocaleString("ko-KR")}원`;
 }
 
 function shortMoney(value, currency) {
@@ -233,11 +47,267 @@ function friendlyWarning(message = "") {
   return String(message || "캡처 분석을 완료하지 못했습니다.");
 }
 
+function number(value) {
+  return Number(value || 0).toLocaleString("ko-KR", { maximumFractionDigits: 6 });
+}
+
+function changeLabel(item) {
+  if (item.change === null || item.change === undefined) return "-";
+  const sign = item.change > 0 ? "+" : "";
+  return `${sign}${money(Math.abs(item.change), item.currency)} / ${sign}${item.change_pct}%`;
+}
+
+function toast(message) {
+  const el = $("#toast");
+  el.textContent = message;
+  el.classList.add("show");
+  window.setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+function aiSettings() {
+  const providerInput = $("#aiProvider")?.value;
+  const keyInput = $("#aiApiKey")?.value;
+  const modelInput = $("#aiModel")?.value;
+  return {
+    provider: providerInput || localStorage.getItem("briefolioAiProvider") || "auto",
+    apiKey: keyInput !== undefined ? keyInput : localStorage.getItem("briefolioAiApiKey") || "",
+    model: modelInput !== undefined ? modelInput : localStorage.getItem("briefolioAiModel") || "",
+  };
+}
+
+function defaultAiModel(provider) {
+  if (provider === "auto") return "";
+  return provider === "openai" ? "gpt-4o-mini" : "gemini-2.0-flash";
+}
+
+function aiRequestPayload() {
+  const settings = aiSettings();
+  if (!settings.apiKey.trim()) return {};
+  return {
+    aiProvider: settings.provider,
+    aiApiKey: settings.apiKey.trim(),
+    aiModel: settings.model.trim() || defaultAiModel(settings.provider),
+  };
+}
+
+function loadAiSettingsForm() {
+  const settings = aiSettings();
+  const provider = $("#aiProvider");
+  const key = $("#aiApiKey");
+  const model = $("#aiModel");
+  if (provider) provider.value = settings.provider;
+  if (key) key.value = settings.apiKey;
+  if (model) model.value = settings.model || defaultAiModel(settings.provider);
+}
+
+function saveAiSettingsForm() {
+  const provider = $("#aiProvider")?.value || "auto";
+  const apiKey = $("#aiApiKey")?.value.trim() || "";
+  const model = $("#aiModel")?.value.trim() || defaultAiModel(provider);
+  localStorage.setItem("briefolioAiProvider", provider);
+  localStorage.setItem("briefolioAiApiKey", apiKey);
+  localStorage.setItem("briefolioAiModel", model);
+  toast(apiKey ? "AI 키를 이 브라우저에 저장했습니다." : "AI 키를 비웠습니다. 서버 환경변수만 사용합니다.");
+  renderAiKeyStatus();
+}
+
+function renderAiKeyStatus() {
+  const status = $("#aiKeyStatus");
+  if (!status) return;
+  const settings = aiSettings();
+  const model = settings.model.trim() || defaultAiModel(settings.provider) || "키 prefix로 자동 선택";
+  status.textContent = settings.apiKey.trim()
+    ? `현재 요청은 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 시도합니다. 모델: ${model}`
+    : "브라우저 AI 키가 없어 서버 환경변수 키로만 시도합니다.";
+}
+
+async function requestJson(url, options) {
+  const requestOptions = options ? { ...options } : {};
+  const timeoutMs = requestOptions.timeoutMs;
+  delete requestOptions.timeoutMs;
+  requestOptions.headers = {
+    ...(requestOptions.headers || {}),
+    ...(localStorage.getItem("briefolioPin") ? { "X-App-Pin": localStorage.getItem("briefolioPin") } : {}),
+  };
+  let timer = null;
+  if (timeoutMs) {
+    const controller = new AbortController();
+    requestOptions.signal = controller.signal;
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+  try {
+    let response = await fetch(url, requestOptions);
+    if (response.status === 401) {
+      const pin = window.prompt("Briefolio PIN을 입력하세요.");
+      if (pin) {
+        localStorage.setItem("briefolioPin", pin);
+        requestOptions.headers["X-App-Pin"] = pin;
+        response = await fetch(url, requestOptions);
+      }
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("AI 응답 시간이 길어 내장 계산 모드로 전환합니다.");
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function setAiDock(open) {
+  const panel = $("#aiDockPanel");
+  const button = $("#aiDockToggle");
+  if (!panel || !button) return;
+  panel.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (open) renderAiKeyStatus();
+}
+
+function fileToImagePayload(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("이미지를 읽지 못했습니다."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+      image.onload = () => {
+        const maxSide = 1600;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+        const dataUrl = canvas.toDataURL(mimeType, 0.88);
+        resolve({ image: dataUrl.split(",")[1], mimeType });
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function captureDiff(item) {
+  const current = state.portfolio?.holdings?.find((holding) => holding.symbol === item.symbol && holding.market === item.market);
+  if (!current) return "새 종목";
+  const currentQty = Number(current.quantity || 0);
+  const nextQty = Number(item.quantity || 0);
+  const qtyDiff = nextQty - currentQty;
+  if (Math.abs(qtyDiff) < 0.000001) return "수량 같음";
+  return `${qtyDiff > 0 ? "+" : ""}${qtyDiff.toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주 보정`;
+}
+
+function renderCapturePreview(result) {
+  state.capturedHoldings = result.holdings || [];
+  const preview = $("#capturePreview");
+  const answer = $("#aiDockAnswer");
+  const applyButton = $("#applyCaptureBtn");
+  // 핵심 수정: provider의 실제 HTTP/status/error를 한도 문제로 뭉개지 않고 그대로 보여준다.
+  const warnings = (result.warnings || []).map((warning) => String(warning));
+  const attempts = Array.isArray(result.attempts) && result.attempts.length
+    ? [`시도한 경로: ${result.attempts.join(" → ")}`]
+    : [];
+  const success = result.provider ? [`성공 경로: ${result.provider} ${result.model || ""}`.trim()] : [];
+  if (answer) {
+    answer.textContent = [
+      result.summary || "캡처 분석이 끝났습니다.",
+      ...success,
+      ...attempts,
+      ...warnings.map((warning) => `주의: ${warning}`),
+    ].join("\n");
+  }
+  if (!preview) return;
+  preview.innerHTML = state.capturedHoldings.length ? state.capturedHoldings.map((item) => `
+    <article>
+      <strong>${escapeHtml(item.name || item.symbol)} <span class="muted">${escapeHtml(item.symbol)} · ${escapeHtml(item.market)}</span></strong>
+      <span>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 8 })}주</span>
+      <small>${captureDiff(item)}</small>
+    </article>
+  `).join("") : `<p class='muted'>${warnings.length ? "AI 한도/키 문제로 캡처를 읽지 못했습니다. 계정 설정을 고치면 같은 화면에서 다시 시도할 수 있습니다." : "읽어낸 종목이 없습니다. 더 선명한 보유 화면 캡처를 올려주세요."}</p>`;
+  if (applyButton) applyButton.disabled = !state.capturedHoldings.length;
+}
+
+async function analyzeTossCapture(file) {
+  if (!file) return;
+  const settings = aiSettings();
+  $("#aiDockAnswer").textContent = settings.apiKey.trim()
+    ? `캡처를 줄이고 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 분석 중입니다...`
+    : "브라우저 AI 키가 없어 서버 환경변수 키로 캡처를 분석 중입니다...";
+  $("#applyCaptureBtn").disabled = true;
+  const payload = await fileToImagePayload(file);
+  const result = await requestJson("/api/capture", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...payload, ...aiRequestPayload() }),
+  });
+  renderCapturePreview(result);
+}
+
+async function applyCapturedHoldings() {
+  if (!state.portfolio || !state.capturedHoldings.length) return;
+  for (const captured of state.capturedHoldings) {
+    let item = state.portfolio.holdings.find((holding) => holding.symbol === captured.symbol && holding.market === captured.market);
+    if (!item) {
+      item = {
+        id: `${captured.market.toLowerCase()}-${captured.symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name: captured.name || captured.symbol,
+        symbol: captured.symbol,
+        market: captured.market,
+        quantity: 0,
+        average_price: 0,
+        average_price_currency: captured.market === "KR" ? "KRW" : "USD",
+        plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" },
+        transactions: [],
+      };
+      state.portfolio.holdings.push(item);
+    }
+    item.name = captured.name || item.name;
+    item.quantity = Number(Number(captured.quantity || 0).toFixed(8));
+    if (Number(captured.average_price || 0) > 0) {
+      item.average_price = Number(captured.average_price || 0);
+      item.average_price_currency = captured.average_price_currency || (captured.market === "KR" ? "KRW" : "USD");
+    }
+  }
+  await requestJson("/api/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(state.portfolio),
+  });
+  await loadAll();
+  toast("토스 캡처 기준으로 보이는 종목을 맞췄습니다.");
+}
+
+async function askDockAi() {
+  const question = $("#aiDockQuestion")?.value.trim();
+  if (!question) {
+    $("#aiDockAnswer").textContent = "질문을 입력하거나 토스 캡처를 올려주세요.";
+    return;
+  }
+  $("#aiDockAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
+  try {
+    const result = await requestJson("/api/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question, ...aiRequestPayload() }),
+      timeoutMs: 18000,
+    });
+    $("#aiDockAnswer").textContent = result.answer;
+  } catch (error) {
+    $("#aiDockAnswer").textContent = `외부 AI 대신 앱 내 계산으로 답합니다.\n\n${buildLocalAdvice(question)}`;
+  }
+}
+
 function planText(item) {
   const plan = item.plan || {};
-  if (!plan.enabled) return "주식 모으기 꺼짐";
+  if (!plan.enabled) return "꺼짐";
+  const weekday = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" }[plan.weekday] || "월";
   const freq = plan.frequency === "monthly" ? "매월" : "매주";
-  return `${freq} ${days[plan.weekday] || "월"}요일 ${money(plan.amount, plan.currency)} 모으기`;
+  return `${freq} ${weekday}요일 ${money(plan.amount, plan.currency)} 모으기`;
 }
 
 function currencyOptions(selected, market = "US") {
@@ -270,7 +340,7 @@ function marketLabel(asset) {
 }
 
 function findSnapshotItem(item) {
-  return (snapshot?.holdings || []).find((row) => row.id === item.id || (row.symbol === item.symbol && row.market === item.market));
+  return (state.snapshot?.holdings || []).find((row) => row.id === item.id || (row.symbol === item.symbol && row.market === item.market));
 }
 
 function planExecutionPreview(item) {
@@ -303,8 +373,7 @@ function planCanExecute(item) {
 }
 
 async function executePlan(itemId) {
-  syncFromForms();
-  const item = portfolio.holdings.find((holding) => holding.id === itemId);
+  const item = state.portfolio?.holdings.find((holding) => holding.id === itemId);
   if (!item) return;
   if (planExecutedToday(item)) {
     toast("오늘은 이미 이 모으기를 반영했습니다.");
@@ -337,8 +406,8 @@ async function executePlan(itemId) {
   item.plan.last_executed_price = preview.close;
   await requestJson("/api/config", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(portfolio),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state.portfolio),
   });
   await loadAll();
   toast(`${item.name} 모으기를 ${preview.quantity.toFixed(6)}주 반영했습니다.`);
@@ -347,15 +416,14 @@ async function executePlan(itemId) {
 function renderDiscoverResults() {
   const el = $("#discoverResults");
   if (!el) return;
-  if (!discoverState.items.length) {
+  const items = state.discover.items || [];
+  if (!items.length) {
     el.innerHTML = "<p class='muted'>표시할 종목이 없습니다. 종목명이나 티커로 검색해보세요.</p>";
     return;
   }
-  el.innerHTML = discoverState.items.map((asset, index) => {
+  el.innerHTML = items.map((asset, index) => {
     const direction = Number(asset.change || 0) >= 0 ? "positive" : "negative";
-    const change = asset.change_pct === null || asset.change_pct === undefined
-      ? "-"
-      : `${Number(asset.change_pct) >= 0 ? "+" : ""}${Number(asset.change_pct).toFixed(2)}%`;
+    const change = asset.change_pct === null || asset.change_pct === undefined ? "-" : `${Number(asset.change_pct) >= 0 ? "+" : ""}${Number(asset.change_pct).toFixed(2)}%`;
     const price = asset.error ? "조회 실패" : money(asset.close, asset.currency);
     return `
       <article class="discover-item">
@@ -375,9 +443,9 @@ function renderDiscoverResults() {
   }).join("");
 }
 
-async function loadDiscovery(category = discoverState.category) {
-  discoverState.category = category;
-  discoverState.loading = true;
+async function loadDiscovery(category = state.discover.category) {
+  state.discover.category = category;
+  state.discover.loading = true;
   document.querySelectorAll(".discover-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.discoverCategory === category);
   });
@@ -385,16 +453,23 @@ async function loadDiscovery(category = discoverState.category) {
   if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목을 불러오는 중입니다...</p>";
   try {
     const data = await requestJson(`/api/discover?category=${encodeURIComponent(category)}&q=${encodeURIComponent(query)}&limit=12`);
-    discoverState.items = data.items || [];
-    discoverState.usd_krw_rate = Number(data.usd_krw_rate || discoverState.usd_krw_rate || 0);
+    state.discover.items = data.items || [];
+    state.discover.usd_krw_rate = Number(data.usd_krw_rate || state.discover.usd_krw_rate || 0);
     renderDiscoverResults();
   } finally {
-    discoverState.loading = false;
+    state.discover.loading = false;
   }
 }
 
+function maybeLoadDiscovery() {
+  if (!$("#discoverResults") || state.discover.items.length || state.discover.loading) return;
+  loadDiscovery().catch(() => {
+    if ($("#discoverResults")) $("#discoverResults").innerHTML = "<p class='muted'>종목 발견 데이터를 불러오지 못했습니다.</p>";
+  });
+}
+
 function updateDiscoverFractionPreview() {
-  const asset = discoverState.selected;
+  const asset = state.discover.selected;
   const preview = $("#discoverFractionPreview");
   if (!asset || !preview) return;
   const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
@@ -413,9 +488,8 @@ function updateDiscoverFractionPreview() {
 }
 
 function openDiscoverAction(asset) {
-  discoverState.selected = asset;
+  state.discover.selected = asset;
   const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
-  const planCurrency = asset.market === "KR" ? "KRW" : "KRW";
   const price = asset.close ? Number(asset.close).toFixed(quoteCurrency === "KRW" ? 0 : 2) : "";
   const el = $("#discoverAction");
   el.hidden = false;
@@ -448,11 +522,11 @@ function openDiscoverAction(asset) {
         <label>모으기 금액
           <div class="inline-control">
             <input id="discoverPlanAmount" type="number" step="0.01" value="10000">
-            <select id="discoverPlanCurrency">${currencyOptions(planCurrency, asset.market)}</select>
+            <select id="discoverPlanCurrency">${currencyOptions("KRW", asset.market)}</select>
           </div>
         </label>
         <label>주기<select id="discoverPlanFrequency"><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
-        <label>요일<select id="discoverPlanWeekday">${Object.entries(days).map(([k, v]) => `<option value="${k}" ${k === "MO" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label>요일<select id="discoverPlanWeekday">${["MO", "TU", "WE", "TH", "FR", "SA", "SU"].map((day) => `<option value="${day}" ${day === "MO" ? "selected" : ""}>${{ MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" }[day]}</option>`).join("")}</select></label>
       </div>
       <div class="discover-actions">
         <button id="discoverSaveBtn" class="primary" type="button">내 주식에 반영</button>
@@ -463,9 +537,8 @@ function openDiscoverAction(asset) {
 }
 
 async function saveDiscoverSelection() {
-  const asset = discoverState.selected;
-  if (!asset) return;
-  syncFromForms();
+  const asset = state.discover.selected;
+  if (!asset || !state.portfolio) return;
   const quoteCurrency = asset.market === "KR" ? "KRW" : "USD";
   let quantity = Number($("#discoverQty")?.value || 0);
   const price = Number($("#discoverPrice")?.value || 0);
@@ -474,12 +547,12 @@ async function saveDiscoverSelection() {
   const buyCurrency = $("#discoverBuyCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
   const planEnabled = Boolean($("#discoverPlanEnabled")?.checked);
   const planAmount = Number($("#discoverPlanAmount")?.value || 0);
-  const planCurrency = $("#discoverPlanCurrency")?.value || (asset.market === "KR" ? "KRW" : "KRW");
+  const planCurrency = $("#discoverPlanCurrency")?.value || "KRW";
   const priceQuote = convertAmount(price, priceCurrency, quoteCurrency);
   if ((!quantity || quantity <= 0) && buyAmount > 0 && priceQuote > 0) {
     quantity = convertAmount(buyAmount, buyCurrency, quoteCurrency) / priceQuote;
   }
-  let item = portfolio.holdings.find((holding) => holding.symbol === asset.symbol && holding.market === asset.market);
+  let item = state.portfolio.holdings.find((holding) => holding.symbol === asset.symbol && holding.market === asset.market);
   if (!item) {
     item = {
       id: `${asset.market.toLowerCase()}-${asset.symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -492,7 +565,7 @@ async function saveDiscoverSelection() {
       plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 0, currency: asset.market === "KR" ? "KRW" : "KRW", memo: "" },
       transactions: [],
     };
-    portfolio.holdings.push(item);
+    state.portfolio.holdings.push(item);
   }
   if (quantity > 0 && price > 0) {
     const currentQty = Number(item.quantity || 0);
@@ -502,14 +575,7 @@ async function saveDiscoverSelection() {
     item.average_price = Number((((currentQty * currentAvgQuote) + (quantity * priceQuote)) / nextQty).toFixed(4));
     item.average_price_currency = quoteCurrency;
     item.transactions = item.transactions || [];
-    item.transactions.unshift({
-      date: new Date().toISOString().slice(0, 10),
-      side: "buy",
-      quantity,
-      price,
-      price_currency: priceCurrency,
-      memo: "발견 화면에서 추가",
-    });
+    item.transactions.unshift({ date: new Date().toISOString().slice(0, 10), side: "buy", quantity, price, price_currency: priceCurrency, memo: "발견 화면에서 추가" });
     item.transactions = item.transactions.slice(0, 20);
   }
   if (planEnabled || planAmount > 0) {
@@ -525,125 +591,144 @@ async function saveDiscoverSelection() {
   }
   await requestJson("/api/config", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(portfolio),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state.portfolio),
   });
   $("#discoverAction").hidden = true;
   await loadAll();
   toast(`${asset.name}을 내 주식에 반영했습니다.`);
 }
 
-function syncFromForms() {
-  document.querySelectorAll(".holding-form-card").forEach((card) => {
-    const item = portfolio.holdings[Number(card.dataset.index)];
-    card.querySelectorAll("[data-field]").forEach((input) => {
-      const field = input.dataset.field;
-      item[field] = ["quantity", "average_price"].includes(field) ? Number(input.value || 0) : input.value;
-    });
-    item.plan = item.plan || {};
-    card.querySelectorAll("[data-plan]").forEach((input) => {
-      const field = input.dataset.plan;
-      item.plan[field] = field === "enabled" ? input.checked : (field === "amount" ? Number(input.value || 0) : input.value);
-    });
-    if (item.market === "KR") {
-      item.average_price_currency = "KRW";
-      item.plan.currency = "KRW";
-    } else {
-      item.average_price_currency = item.average_price_currency || "USD";
-      item.plan.currency = item.plan.currency || "KRW";
-    }
-    item.id = item.id || `${item.market.toLowerCase()}-${item.symbol.toLowerCase()}`;
-    item.transactions = item.transactions || [];
-  });
-  portfolio.settings = {
-    recipient: $("#recipient").value || "blossom0948@gmail.com",
-    send_time: $("#sendTime").value || "07:00",
-    timezone: $("#timezone").value || "Asia/Seoul",
-  };
-}
-
-function renderDashboard() {
-  if (!snapshot) return;
+function renderSnapshot(snapshot) {
+  state.snapshot = snapshot;
   $("#totalKrw").textContent = money(snapshot.totals.KRW_CONVERTED || snapshot.totals.KRW, "KRW");
   $("#totalUsd").textContent = money(snapshot.totals.USD, "USD");
   $("#activePlans").textContent = `${snapshot.active_plans}개`;
-  $("#syncState").textContent = snapshot.usd_krw_rate ? `환율 ${Math.round(snapshot.usd_krw_rate).toLocaleString("ko-KR")}원` : "연결됨";
+  $("#updatedAt").textContent = snapshot.usd_krw_rate ? `환율 ${Math.round(snapshot.usd_krw_rate).toLocaleString("ko-KR")}원` : snapshot.updated_at;
   $("#holdingCards").innerHTML = snapshot.holdings.map((item) => {
-    const change = item.change_pct === null || item.change_pct === undefined ? "-" : `${item.change >= 0 ? "+" : ""}${item.change_pct.toFixed(2)}%`;
-    const profit = item.cost ? `${item.profit_pct.toFixed(2)}%` : "-";
+    if (item.error) {
+      return `<article class="holding-card warning"><strong>${item.name}</strong><span>${item.error}</span></article>`;
+    }
+    const direction = item.change >= 0 ? "positive" : "negative";
+    const profitClass = item.profit >= 0 ? "positive" : "negative";
+    const profit = item.cost ? `<span class="${profitClass}">${item.profit_pct}%</span>` : "<span>-</span>";
     const valueText = item.value ? `${krwApprox(item.value, item.currency) || shortMoney(item.value, item.currency)}` : "-";
     const avgText = item.average_price ? shortMoney(item.average_price, item.average_price_currency || item.currency) : "-";
-    const priceMeta = item.error ? "" : krwApprox(item.close, item.currency);
+    const priceMeta = krwApprox(item.close, item.currency);
     return `
       <article class="holding-card">
         <div class="holding-main">
-          <div><strong>${item.name}</strong><span>${item.symbol} · ${item.market}</span></div>
-          <span class="pill">${item.date || "가격 조회"}</span>
+          <div>
+            <strong>${item.name}</strong>
+            <span>${item.symbol} · ${item.market}</span>
+          </div>
+          <span class="pill">${item.date}</span>
         </div>
         <div class="price-line">
-          <div class="price-stack"><b>${item.error ? "조회 실패" : shortMoney(item.close, item.currency)}</b>${priceMeta ? `<small>${priceMeta}</small>` : ""}</div>
-          <span class="${item.change >= 0 ? "positive" : "negative"}">${item.error || change}</span>
+          <div class="price-stack"><b>${shortMoney(item.close, item.currency)}</b>${priceMeta ? `<small>${priceMeta}</small>` : ""}</div>
+          <span class="${direction}">${item.change_pct === null || item.change_pct === undefined ? "-" : `${item.change >= 0 ? "+" : ""}${item.change_pct}%`}</span>
         </div>
         <dl>
-          <div><dt>수량</dt><dd>${Number(item.quantity || 0).toLocaleString("ko-KR", { maximumFractionDigits: 6 })}</dd></div>
+          <div><dt>수량</dt><dd>${number(item.quantity)}</dd></div>
           <div><dt>평단</dt><dd>${avgText}</dd></div>
           <div><dt>평가액</dt><dd>${valueText}</dd></div>
           <div><dt>손익</dt><dd>${profit}</dd></div>
         </dl>
-        <p class="plan-chip">${planText(item)}${item.plan?.enabled && item.plan_estimated_shares ? ` · 예상 ${item.plan_estimated_shares.toFixed(6)}주` : ""}</p>
+        <p class="plan-chip">${planText(item)}${item.plan?.enabled ? ` · 예상 ${number(item.plan_estimated_shares)}주` : ""}</p>
       </article>
     `;
   }).join("");
 }
 
-function renderForms() {
-  const settings = portfolio.settings || defaults.settings;
-  $("#recipient").value = settings.recipient || "blossom0948@gmail.com";
-  $("#sendTime").value = settings.send_time || "07:00";
-  $("#timezone").value = settings.timezone || "Asia/Seoul";
-  $("#holdingForms").innerHTML = (portfolio.holdings || []).map((item, index) => `
-    <article class="holding-form-card" data-index="${index}">
-      <div class="holding-form-title">
-        <div>
-          <strong>${escapeHtml(item.name || "새 종목")}</strong>
-          <span>${escapeHtml(item.symbol || "티커")} · ${item.market === "KR" ? "한국" : "미국"}</span>
-        </div>
-        <button data-remove="${index}" class="ghost-danger" type="button">삭제</button>
-      </div>
-      <label>종목명<input data-field="name" value="${escapeHtml(item.name || "")}"></label>
-      <label>티커<input data-field="symbol" value="${escapeHtml(item.symbol || "")}"></label>
-      <label>시장<select data-field="market"><option value="KR" ${item.market === "KR" ? "selected" : ""}>한국</option><option value="US" ${item.market === "US" ? "selected" : ""}>미국</option></select></label>
-      <label>현재 수량<input data-field="quantity" type="number" step="0.000001" value="${item.quantity || 0}"></label>
-      <label>평균 단가
-        <div class="inline-control">
-          <input data-field="average_price" type="number" step="0.01" value="${item.average_price || 0}">
-          <select data-field="average_price_currency">${currencyOptions(item.average_price_currency || (item.market === "KR" ? "KRW" : "USD"), item.market)}</select>
-        </div>
-      </label>
-      <div class="wide-row">
-        <label class="toggle"><input data-plan="enabled" type="checkbox" ${item.plan?.enabled ? "checked" : ""}><span>모으기</span></label>
-        <label>주기<select data-plan="frequency"><option value="weekly" ${item.plan?.frequency !== "monthly" ? "selected" : ""}>매주</option><option value="monthly" ${item.plan?.frequency === "monthly" ? "selected" : ""}>매월</option></select></label>
-        <label>요일<select data-plan="weekday">${Object.entries(days).map(([k, v]) => `<option value="${k}" ${item.plan?.weekday === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label>모으기 금액
-          <div class="inline-control">
-            <input data-plan="amount" type="number" step="0.01" value="${item.plan?.amount || 0}">
-            <select data-plan="currency">${currencyOptions(item.plan?.currency || (item.market === "KR" ? "KRW" : "KRW"), item.market)}</select>
-          </div>
-        </label>
-        <label>메모<input data-plan="memo" value="${item.plan?.memo || ""}"></label>
-      </div>
-      <div class="plan-execute-row">
-        <span>${escapeHtml(planExecutionLabel(item))}${item.plan?.last_executed_date ? ` · 마지막 반영 ${escapeHtml(item.plan.last_executed_date)}` : ""}</span>
-        <button data-execute-plan="${escapeHtml(item.id)}" class="primary" type="button" ${planCanExecute(item) ? "" : "disabled"}>${planExecutedToday(item) ? "오늘 반영됨" : "오늘 모으기 반영"}</button>
-      </div>
-    </article>
-  `).join("");
+function renderSelectors(portfolio) {
+  const options = portfolio.holdings.map((item) => `<option value="${item.id}">${item.name} (${item.symbol})</option>`).join("");
+  $("#tradeHolding").innerHTML = options;
 }
 
-function renderBriefing() {
-  const text = lastBriefing.text || "아직 저장된 브리핑이 없습니다. GitHub Actions를 한 번 실행하면 여기에 표시됩니다.";
-  $("#briefingText").textContent = text;
-  $("#briefingText2").textContent = text;
+function renderPlanList(portfolio) {
+  $("#planList").innerHTML = portfolio.holdings.map((item) => {
+    const plan = item.plan || {};
+    return `
+      <form class="plan-row" data-id="${item.id}">
+        <div>
+          <strong>${item.name}</strong>
+          <span>${item.symbol} · ${item.market}</span>
+        </div>
+        <label class="toggle">
+          <input name="enabled" type="checkbox" ${plan.enabled ? "checked" : ""}>
+          <span>켜기</span>
+        </label>
+        <label>주기
+          <select name="frequency">
+            <option value="weekly" ${plan.frequency === "weekly" ? "selected" : ""}>매주</option>
+            <option value="monthly" ${plan.frequency === "monthly" ? "selected" : ""}>매월</option>
+          </select>
+        </label>
+        <label>요일
+          <select name="weekday">
+            ${["MO", "TU", "WE", "TH", "FR", "SA", "SU"].map((day) => `<option value="${day}" ${plan.weekday === day ? "selected" : ""}>${{ MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" }[day]}</option>`).join("")}
+          </select>
+        </label>
+        <label>금액
+          <div class="inline-control">
+            <input name="amount" type="number" step="0.01" value="${plan.amount || 0}">
+            <select name="currency">${currencyOptions(plan.currency || (item.market === "KR" ? "KRW" : "KRW"), item.market)}</select>
+          </div>
+        </label>
+        <label>메모
+          <input name="memo" value="${plan.memo || ""}" placeholder="예: 월요일 1만원">
+        </label>
+        <button type="submit">저장</button>
+        <div class="plan-execute-row">
+          <span>${escapeHtml(planExecutionLabel(item))}${plan.last_executed_date ? ` · 마지막 반영 ${escapeHtml(plan.last_executed_date)}` : ""}</span>
+          <button data-execute-plan="${escapeHtml(item.id)}" class="primary" type="button" ${planCanExecute(item) ? "" : "disabled"}>${planExecutedToday(item) ? "오늘 반영됨" : "오늘 모으기 반영"}</button>
+        </div>
+      </form>
+    `;
+  }).join("");
+}
+
+function renderNews(news) {
+  const render = (items) => items.map((item) => `
+    <article class="news-item">
+      <a href="${item.link}" target="_blank" rel="noreferrer">${item.title_ko || item.title}</a>
+      <small>${item.source || "뉴스"}${item.symbol ? ` · ${item.symbol}` : ""}</small>
+    </article>
+  `).join("") || "<p class=\"muted\">표시할 뉴스가 없습니다.</p>";
+  $("#domesticNews").innerHTML = render(news.domestic);
+  $("#overseasNews").innerHTML = render(news.overseas);
+}
+
+function renderBriefHighlights(snapshot) {
+  const first = snapshot.holdings.find((item) => !item.error);
+  const strongest = snapshot.holdings
+    .filter((item) => item.change_pct !== null && item.change_pct !== undefined)
+    .sort((a, b) => b.change_pct - a.change_pct)[0];
+  $("#briefHighlights").innerHTML = `
+    <div><span>대표 종목</span><strong>${first ? first.name : "-"}</strong></div>
+    <div><span>오늘 강한 종목</span><strong>${strongest ? `${strongest.name} ${strongest.change_pct}%` : "-"}</strong></div>
+    <div><span>모으기</span><strong>${snapshot.active_plans}개 진행</strong></div>
+  `;
+}
+
+function fillSettings(portfolio) {
+  const settings = portfolio.settings || {};
+  const form = $("#settingsForm");
+  form.recipient.value = settings.recipient || "blossom0948@gmail.com";
+  form.send_time.value = settings.send_time || "07:00";
+  form.timezone.value = settings.timezone || "Asia/Seoul";
+}
+
+function showView(name) {
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+  const nextView = document.querySelector(`#view-${name}`);
+  if (!nextView) return;
+  nextView.classList.add("active");
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === name);
+  });
+  if (name === "pro") renderPro();
+  if (name === "manage") maybeLoadDiscovery();
 }
 
 const proState = {
@@ -671,15 +756,15 @@ function pct(value) {
 }
 
 function currentHoldings() {
-  return (snapshot?.holdings || []).filter((item) => !item.error);
+  return (state.snapshot?.holdings || []).filter((item) => !item.error);
 }
 
 function planHoldings() {
-  return (portfolio.holdings || []).filter((item) => item.plan?.enabled);
+  return (state.portfolio?.holdings || []).filter((item) => item.plan?.enabled);
 }
 
 function analyzeNewsImpact() {
-  const text = `${lastBriefing?.text || ""}`.toLowerCase();
+  const text = `${state.briefing || ""}`.toLowerCase();
   const positives = ["상승", "강세", "호실적", "성장", "개선", "수혜", "기대", "완화", "돌파", "반등", "ai", "실적"];
   const negatives = ["하락", "약세", "부진", "감소", "우려", "리스크", "규제", "관세", "소송", "침체", "경고", "악화"];
   const positiveCount = positives.reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0);
@@ -814,21 +899,9 @@ function renderRiskRadar() {
     .filter((item) => Number.isFinite(Number(item.change_pct)))
     .sort((a, b) => Math.abs(Number(b.change_pct || 0)) - Math.abs(Number(a.change_pct || 0)))[0];
   const risks = [
-    {
-      label: "비중 집중",
-      score: clamp(Math.round(concentration * 100), 0, 100),
-      body: top ? `${top.name} ${pct(concentration)} · 원화 환산 기준` : "보유 금액 입력 필요",
-    },
-    {
-      label: "가격 변동",
-      score: clamp(Math.round(Math.abs(Number(biggestMove?.change_pct || 0)) * 12), 0, 100),
-      body: biggestMove ? `${biggestMove.name} ${Number(biggestMove.change_pct || 0).toFixed(2)}%` : "변동 데이터 없음",
-    },
-    {
-      label: "뉴스 톤",
-      score: 100 - impact.score,
-      body: `${impact.label} · 주의 키워드 ${impact.negativeCount}개`,
-    },
+    { label: "비중 집중", score: clamp(Math.round(concentration * 100), 0, 100), body: top ? `${top.name} ${pct(concentration)} · 원화 환산 기준` : "보유 금액 입력 필요" },
+    { label: "가격 변동", score: clamp(Math.round(Math.abs(Number(biggestMove?.change_pct || 0)) * 12), 0, 100), body: biggestMove ? `${biggestMove.name} ${Number(biggestMove.change_pct || 0).toFixed(2)}%` : "변동 데이터 없음" },
+    { label: "뉴스 톤", score: 100 - impact.score, body: `${impact.label} · 주의 키워드 ${impact.negativeCount}개` },
   ];
   $("#riskRadar").innerHTML = risks.map((risk) => `
     <article>
@@ -891,6 +964,7 @@ function nextWeekdayLabel(code) {
 }
 
 function renderEventsAndAlerts() {
+  const portfolio = state.portfolio || { holdings: [], settings: {} };
   const activePlans = planHoldings();
   const events = [
     { tag: "매일", title: "아침 브리핑 메일", body: `${portfolio.settings?.send_time || "07:00"} · ${portfolio.settings?.recipient || "받을 메일 미설정"}` },
@@ -908,15 +982,13 @@ function renderEventsAndAlerts() {
     </article>
   `).join("");
 
-  const holdings = currentHoldings();
   const impact = analyzeNewsImpact();
   const alerts = [
     { title: "가격 급변", body: "하루 등락률이 ±5%를 넘으면 메일 브리핑에서 상단 경고로 올리기" },
     { title: "뉴스 영향", body: `뉴스 영향 점수가 40점 아래면 당일 매수 전 확인하기. 현재 ${impact.score}점입니다.` },
     { title: "적립 체크", body: activePlans.length ? `${activePlans.length}개 주식 모으기 계획을 메일에 반영 중입니다.` : "주식 모으기 계획이 꺼져 있습니다." },
+    { title: "평단 관리", body: "평단과 현재가 차이가 커질 때 일지에 매수 이유를 남기기" },
   ];
-  const bigHolding = holdings.find((item) => Number(item.value || 0) > 0 && Number(item.quantity || 0) > 0);
-  if (bigHolding) alerts.push({ title: "평단 관리", body: "평단과 현재가 차이가 커질 때 일지에 매수 이유를 남기기" });
 
   $("#alertList").innerHTML = alerts.map((item) => `<article><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span></article>`).join("");
 }
@@ -1016,9 +1088,9 @@ async function askProAi() {
   try {
     const result = await requestJson("/api/ai", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       timeoutMs: 9000,
-      body: JSON.stringify({ question: `${question}\n\n[포트폴리오]\n${context}\n\n[브리핑]\n${lastBriefing.text || ""}` }),
+      body: JSON.stringify({ question: `${question}\n\n[포트폴리오]\n${context}\n\n[브리핑]\n${state.briefing || ""}`, ...aiRequestPayload() }),
     });
     $("#proAiAnswer").textContent = result.answer;
   } catch (error) {
@@ -1048,62 +1120,130 @@ function renderPro() {
   });
 }
 
+async function loadSecondaryContent() {
+  const newsTask = requestJson("/api/news").then((news) => {
+    renderNews(news);
+  }).catch(() => {
+    $("#domesticNews").innerHTML = "<p class=\"muted\">뉴스를 불러오지 못했습니다.</p>";
+    $("#overseasNews").innerHTML = "<p class=\"muted\">뉴스를 불러오지 못했습니다.</p>";
+  });
+  const briefingTask = requestJson("/api/briefing").then((briefing) => {
+    state.briefing = briefing.text;
+    $("#briefingText").textContent = briefing.text;
+  }).catch(() => {
+    $("#briefingText").textContent = "저장된 브리핑을 불러오지 못했습니다. 메일 발송은 기존 스케줄대로 유지됩니다.";
+  });
+  await Promise.allSettled([newsTask, briefingTask]);
+}
+
 async function loadAll() {
-  $("#syncState").textContent = "불러오는 중";
-  const [config, snap] = await Promise.all([
-    requestJson("/api/config"),
+  $("#briefingText").textContent = "불러오는 중...";
+  const [portfolio, snapshot] = await Promise.all([
+    requestJson("/api/portfolio"),
     requestJson("/api/snapshot"),
   ]);
-  portfolio = config;
-  snapshot = snap;
-  renderDashboard();
-  renderForms();
-  renderBriefing();
-  requestJson("/api/briefing").then((briefing) => {
-    lastBriefing = briefing;
-    renderBriefing();
-  }).catch(() => {
-    lastBriefing = { text: "저장된 브리핑을 불러오지 못했습니다. 메일 발송은 기존 스케줄대로 유지됩니다." };
-    renderBriefing();
-  });
+  state.portfolio = portfolio;
+  renderSnapshot(snapshot);
+  renderSelectors(portfolio);
+  renderPlanList(portfolio);
+  $("#domesticNews").innerHTML = "<p class=\"muted\">뉴스를 불러오는 중입니다...</p>";
+  $("#overseasNews").innerHTML = "<p class=\"muted\">뉴스를 불러오는 중입니다...</p>";
+  renderBriefHighlights(snapshot);
+  fillSettings(portfolio);
+  loadSecondaryContent();
   if ($("#view-pro")?.classList.contains("active")) renderPro();
   if ($("#view-manage")?.classList.contains("active")) maybeLoadDiscovery();
-  toast("최신 설정을 불러왔습니다.");
 }
 
-async function saveAll() {
-  syncFromForms();
-  $("#syncState").textContent = "저장 중";
-  await requestJson("/api/config", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(portfolio),
-  });
-  await loadAll();
-  toast("저장했습니다. 다음 메일에 반영됩니다.");
-}
-
-$("#loadBtn").addEventListener("click", () => loadAll().catch((error) => toast(`불러오기 실패: ${error.message}`)));
-$("#saveBtn").addEventListener("click", () => saveAll().catch((error) => toast(`저장 실패: ${error.message}`)));
-$("#saveSettingsBtn").addEventListener("click", () => saveAll().catch((error) => toast(`저장 실패: ${error.message}`)));
-$("#addHoldingBtn").addEventListener("click", () => {
-  syncFromForms();
-  portfolio.holdings.push({ id: crypto.randomUUID(), name: "", symbol: "", market: "US", quantity: 0, average_price: 0, average_price_currency: "USD", plan: { enabled: false, frequency: "weekly", weekday: "MO", amount: 10000, currency: "KRW", memo: "" }, transactions: [] });
-  renderForms();
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.addEventListener("click", () => showView(item.dataset.view));
 });
-$("#holdingForms").addEventListener("input", syncFromForms);
-$("#holdingForms").addEventListener("change", syncFromForms);
-$("#holdingForms").addEventListener("click", (event) => {
-  const executeButton = event.target.closest("[data-execute-plan]");
-  if (executeButton) {
-    executePlan(executeButton.dataset.executePlan).catch((error) => toast(`모으기 반영 실패: ${error.message}`));
-    return;
+
+$("#refreshBtn").addEventListener("click", async () => {
+  try {
+    await loadAll();
+    toast("최신 데이터로 갱신했습니다.");
+  } catch (error) {
+    toast(`갱신 실패: ${error.message}`);
   }
-  if (event.target.dataset.remove === undefined) return;
-  syncFromForms();
-  portfolio.holdings.splice(Number(event.target.dataset.remove), 1);
-  renderForms();
 });
+
+$("#sendBtn").addEventListener("click", sendTest);
+
+async function sendTest() {
+  try {
+    await requestJson("/api/send-test", { method: "POST" });
+    toast("브리핑 메일을 보냈습니다.");
+  } catch (error) {
+    toast(`메일 발송 실패: ${error.message}`);
+  }
+}
+
+$("#copyBtn").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(state.briefing);
+  toast("브리핑을 복사했습니다.");
+});
+
+$("#holdingForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  try {
+    await requestJson("/api/holdings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    event.currentTarget.reset();
+    await loadAll();
+    toast("종목을 추가했습니다.");
+  } catch (error) {
+    toast(`추가 실패: ${error.message}`);
+  }
+});
+
+$("#tradeForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  const id = payload.holding_id;
+  delete payload.holding_id;
+  try {
+    await requestJson(`/api/holdings/${id}/transactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    form.reset();
+    await loadAll();
+    toast("매수/매도 내역을 반영했습니다.");
+  } catch (error) {
+    toast(`반영 실패: ${error.message}`);
+  }
+});
+
+$("#planList").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  payload.enabled = form.querySelector('[name="enabled"]').checked;
+  try {
+    await requestJson(`/api/holdings/${form.dataset.id}/plan`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await loadAll();
+    toast("주식 모으기 설정을 저장했습니다.");
+  } catch (error) {
+    toast(`저장 실패: ${error.message}`);
+  }
+});
+$("#planList").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-execute-plan]");
+  if (!button) return;
+  executePlan(button.dataset.executePlan).catch((error) => toast(`모으기 반영 실패: ${error.message}`));
+});
+
 document.querySelectorAll(".discover-tab").forEach((button) => {
   button.addEventListener("click", () => loadDiscovery(button.dataset.discoverCategory).catch((error) => toast(`종목 불러오기 실패: ${error.message}`)));
 });
@@ -1117,7 +1257,7 @@ $("#discoverSearch")?.addEventListener("keydown", (event) => {
 $("#discoverResults")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-discover-index]");
   if (!button) return;
-  openDiscoverAction(discoverState.items[Number(button.dataset.discoverIndex)]);
+  openDiscoverAction(state.discover.items[Number(button.dataset.discoverIndex)]);
 });
 $("#discoverAction")?.addEventListener("click", (event) => {
   if (event.target.id === "discoverCloseBtn") {
@@ -1130,22 +1270,40 @@ $("#discoverAction")?.addEventListener("click", (event) => {
 });
 $("#discoverAction")?.addEventListener("input", updateDiscoverFractionPreview);
 $("#discoverAction")?.addEventListener("change", updateDiscoverFractionPreview);
+
+$("#settingsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  try {
+    await requestJson("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await loadAll();
+    toast("알림 설정을 저장했습니다.");
+  } catch (error) {
+    toast(`설정 저장 실패: ${error.message}`);
+  }
+});
+
 $("#exampleQuestionBtn").addEventListener("click", () => {
   $("#aiQuestion").value = "삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?";
 });
+
 $("#askAiBtn").addEventListener("click", async () => {
   const question = $("#aiQuestion").value.trim();
   if (!question) {
     $("#aiAnswer").textContent = "질문을 입력하세요.";
     return;
   }
-  $("#aiAnswer").textContent = "AI가 계산 중입니다...";
+  $("#aiAnswer").textContent = "포트폴리오 데이터를 읽고 답변을 준비하는 중입니다...";
   try {
     const result = await requestJson("/api/ai", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       timeoutMs: 9000,
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, ...aiRequestPayload() }),
     });
     $("#aiAnswer").textContent = result.answer;
   } catch (error) {
@@ -1173,6 +1331,15 @@ document.querySelectorAll(".quick-prompts button").forEach((button) => {
 $("#aiDockToggle")?.addEventListener("click", () => setAiDock($("#aiDockPanel")?.hidden));
 $("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
 $("#aiDockAsk")?.addEventListener("click", () => askDockAi());
+$("#saveAiKeyBtn")?.addEventListener("click", saveAiSettingsForm);
+$("#aiProvider")?.addEventListener("change", () => {
+  const provider = $("#aiProvider")?.value || "auto";
+  const model = $("#aiModel");
+  if (model) model.value = defaultAiModel(provider);
+  renderAiKeyStatus();
+});
+$("#aiApiKey")?.addEventListener("input", renderAiKeyStatus);
+$("#aiModel")?.addEventListener("input", renderAiKeyStatus);
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   analyzeTossCapture(file).catch((error) => {
@@ -1183,10 +1350,11 @@ $("#applyCaptureBtn")?.addEventListener("click", () => {
   applyCapturedHoldings().catch((error) => toast(`캡처 반영 실패: ${error.message}`));
 });
 
+$("#tradeForm").date.valueAsDate = new Date();
+loadAiSettingsForm();
+renderAiKeyStatus();
 loadAll().catch((error) => {
-  $("#syncState").textContent = "연결 필요";
-  toast(`초기 연결 실패: ${error.message}`);
-  renderForms();
-  renderBriefing();
+  $("#briefingText").textContent = `초기 로딩 실패: ${error.message}`;
+  toast("초기 로딩에 실패했습니다.");
   if ($("#view-pro")?.classList.contains("active")) renderPro();
 });
