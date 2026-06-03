@@ -65,10 +65,13 @@ function toast(message) {
 }
 
 function aiSettings() {
+  const providerInput = $("#aiProvider")?.value;
+  const keyInput = $("#aiApiKey")?.value;
+  const modelInput = $("#aiModel")?.value;
   return {
-    provider: localStorage.getItem("briefolioAiProvider") || "gemini",
-    apiKey: localStorage.getItem("briefolioAiApiKey") || "",
-    model: localStorage.getItem("briefolioAiModel") || "",
+    provider: providerInput || localStorage.getItem("briefolioAiProvider") || "gemini",
+    apiKey: keyInput !== undefined ? keyInput : localStorage.getItem("briefolioAiApiKey") || "",
+    model: modelInput !== undefined ? modelInput : localStorage.getItem("briefolioAiModel") || "",
   };
 }
 
@@ -104,6 +107,17 @@ function saveAiSettingsForm() {
   localStorage.setItem("briefolioAiApiKey", apiKey);
   localStorage.setItem("briefolioAiModel", model);
   toast(apiKey ? "AI 키를 이 브라우저에 저장했습니다." : "AI 키를 비웠습니다. 서버 환경변수만 사용합니다.");
+  renderAiKeyStatus();
+}
+
+function renderAiKeyStatus() {
+  const status = $("#aiKeyStatus");
+  if (!status) return;
+  const settings = aiSettings();
+  const model = settings.model.trim() || defaultAiModel(settings.provider);
+  status.textContent = settings.apiKey.trim()
+    ? `현재 요청은 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 시도합니다. 모델: ${model}`
+    : "브라우저 AI 키가 없어 서버 환경변수 키로만 시도합니다.";
 }
 
 async function requestJson(url, options) {
@@ -149,6 +163,7 @@ function setAiDock(open) {
   if (!panel || !button) return;
   panel.hidden = !open;
   button.setAttribute("aria-expanded", String(open));
+  if (open) renderAiKeyStatus();
 }
 
 function fileToImagePayload(file) {
@@ -192,9 +207,15 @@ function renderCapturePreview(result) {
   const answer = $("#aiDockAnswer");
   const applyButton = $("#applyCaptureBtn");
   const warnings = (result.warnings || []).map(friendlyWarning);
+  const attempts = Array.isArray(result.attempts) && result.attempts.length
+    ? [`시도한 경로: ${result.attempts.join(" → ")}`]
+    : [];
+  const success = result.provider ? [`성공 경로: ${result.provider} ${result.model || ""}`.trim()] : [];
   if (answer) {
     answer.textContent = [
       result.summary || "캡처 분석이 끝났습니다.",
+      ...success,
+      ...attempts,
       ...warnings.map((warning) => `주의: ${warning}`),
     ].join("\n");
   }
@@ -211,7 +232,10 @@ function renderCapturePreview(result) {
 
 async function analyzeTossCapture(file) {
   if (!file) return;
-  $("#aiDockAnswer").textContent = "캡처를 가볍게 줄이고 AI가 종목, 수량, 평단을 읽는 중입니다...";
+  const settings = aiSettings();
+  $("#aiDockAnswer").textContent = settings.apiKey.trim()
+    ? `캡처를 줄이고 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 분석 중입니다...`
+    : "브라우저 AI 키가 없어 서버 환경변수 키로 캡처를 분석 중입니다...";
   $("#applyCaptureBtn").disabled = true;
   const payload = await fileToImagePayload(file);
   const result = await requestJson("/api/capture", {
@@ -1310,7 +1334,10 @@ $("#aiProvider")?.addEventListener("change", () => {
   const provider = $("#aiProvider")?.value || "gemini";
   const model = $("#aiModel");
   if (model) model.value = defaultAiModel(provider);
+  renderAiKeyStatus();
 });
+$("#aiApiKey")?.addEventListener("input", renderAiKeyStatus);
+$("#aiModel")?.addEventListener("input", renderAiKeyStatus);
 $("#tossCaptureInput")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   analyzeTossCapture(file).catch((error) => {
@@ -1323,6 +1350,7 @@ $("#applyCaptureBtn")?.addEventListener("click", () => {
 
 $("#tradeForm").date.valueAsDate = new Date();
 loadAiSettingsForm();
+renderAiKeyStatus();
 loadAll().catch((error) => {
   $("#briefingText").textContent = `초기 로딩 실패: ${error.message}`;
   toast("초기 로딩에 실패했습니다.");

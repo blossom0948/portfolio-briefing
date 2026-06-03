@@ -373,6 +373,7 @@
             <input id="aiApiKey" type="password" autocomplete="off" placeholder="이 브라우저에만 저장">
           </label>
           <button id="saveAiKeyBtn" type="button">AI 키 저장</button>
+          <small id="aiKeyStatus">브라우저 AI 키 상태를 확인하는 중입니다.</small>
           <small>Cloudflare 환경변수가 꼬여도 여기 저장한 키로 캡처 분석과 AI 질문을 먼저 시도합니다.</small>
         </div>
         <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
@@ -388,7 +389,7 @@
     </aside>
 
     <div id="toast" role="status"></div>
-    <script src="/static/app.js"></script>
-    <script src="/static/landing.js"></script>
+    <script src="/static/app.js?v=20260603-ai-key-debug"></script>
+    <script src="/static/landing.js?v=20260603-ai-key-debug"></script>
   </body>
 </html>

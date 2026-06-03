@@ -108,11 +108,13 @@ export async function onRequestPost({ request, env }) {
     const { image = "", mimeType = "image/png", aiProvider = "", aiApiKey = "", aiModel = "" } = await request.json();
     if (!image) return json({ error: "image is required" }, { status: 400 });
     const warnings = [];
+    const attempts = [];
     const clientProvider = String(aiProvider || "").toLowerCase();
     const clientKey = String(aiApiKey || "").trim();
 
     if (clientKey && clientProvider === "openai") {
       const model = aiModel || "gpt-4o-mini";
+      attempts.push(`browser OpenAI ${model}`);
       try {
         return json(await askOpenAIVision(env, image, mimeType, { apiKey: clientKey, model }));
       } catch (error) {
@@ -123,6 +125,7 @@ export async function onRequestPost({ request, env }) {
 
     if (clientKey && clientProvider === "gemini") {
       const model = aiModel || "gemini-2.0-flash";
+      attempts.push(`browser Gemini ${model}`);
       try {
         return json(await askGeminiVision(env, image, mimeType, { apiKey: clientKey, model }));
       } catch (error) {
@@ -133,6 +136,7 @@ export async function onRequestPost({ request, env }) {
 
     if (env.OPENAI_API_KEY) {
       const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
+      attempts.push(`server OpenAI ${model}`);
       try {
         return json(await askOpenAIVision(env, image, mimeType));
       } catch (error) {
@@ -142,6 +146,7 @@ export async function onRequestPost({ request, env }) {
     }
     if (env.GEMINI_API_KEY) {
       const model = env.GEMINI_MODEL || "gemini-2.0-flash";
+      attempts.push(`server Gemini ${model}`);
       try {
         return json(await askGeminiVision(env, image, mimeType));
       } catch (error) {
@@ -150,9 +155,9 @@ export async function onRequestPost({ request, env }) {
       }
     }
     if (warnings.length) {
-      return json({ summary: "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", holdings: [], warnings });
+      return json({ summary: "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", holdings: [], warnings, attempts });
     }
-    return json({ summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.", holdings: [], warnings: ["OPENAI_API_KEY 또는 GEMINI_API_KEY를 Cloudflare Pages 환경 변수에 넣어야 합니다."] });
+    return json({ summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.", holdings: [], warnings: ["OPENAI_API_KEY 또는 GEMINI_API_KEY를 Cloudflare Pages 환경 변수에 넣어야 합니다."], attempts });
   } catch (error) {
     return json({ error: error.message }, { status: 500 });
   }
