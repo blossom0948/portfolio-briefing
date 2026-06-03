@@ -70,7 +70,7 @@ function aiSettings() {
 
 function defaultAiModel(provider) {
   if (provider === "auto") return "";
-  return provider === "openai" ? "gpt-4o-mini" : "gemini-2.0-flash";
+  return provider === "openai" ? "gpt-4o-mini" : "gemini-2.5-flash-lite";
 }
 
 function aiRequestPayload() {

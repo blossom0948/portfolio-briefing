@@ -120,7 +120,8 @@ function getLastBriefing() {
 function askAi(question) {
   const props = PropertiesService.getScriptProperties();
   const apiKey = props.getProperty("GEMINI_API_KEY");
-  const model = props.getProperty("GEMINI_MODEL") || "gemini-2.0-flash";
+  const configuredModel = props.getProperty("GEMINI_MODEL") || "gemini-2.5-flash-lite";
+  const model = configuredModel === "gemini-2.0-flash" ? "gemini-2.5-flash-lite" : configuredModel;
   if (!apiKey) {
     return "GEMINI_API_KEY가 아직 설정되지 않았습니다. Apps Script의 프로젝트 설정 > 스크립트 속성에 GEMINI_API_KEY를 추가하세요.";
   }

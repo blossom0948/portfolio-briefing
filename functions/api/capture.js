@@ -89,6 +89,13 @@ function errorMessageFromResponse(data, fallback) {
   return data?.error?.message || data?.error?.status || data?.message || fallback;
 }
 
+function geminiModel(value = "") {
+  const model = String(value || "").trim();
+  // gemini-2.0-flash 프로젝트에서 free_tier limit: 0이 반복되어, 현재 무료/저가 티어에 맞는 Flash-Lite로 보정한다.
+  if (!model || model === "gemini-2.0-flash") return "gemini-2.5-flash-lite";
+  return model;
+}
+
 async function askOpenAIVision({ apiKey, model, image, mimeType }) {
   // 핵심 수정: 이미지 입력은 Responses API 대신 vision에서 안정적인 Chat Completions 형식으로 보낸다.
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -160,7 +167,7 @@ function configuredProviders(env, body) {
     providers.push({
       source: "server",
       provider: "gemini",
-      model: env.GEMINI_MODEL || "gemini-2.0-flash",
+      model: geminiModel(env.GEMINI_MODEL),
       apiKey: env.GEMINI_API_KEY,
     });
   }

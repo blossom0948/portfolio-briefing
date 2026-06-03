@@ -26,6 +26,13 @@ function friendlyProviderError(provider, message = "") {
   return text;
 }
 
+function geminiModel(value = "") {
+  const model = String(value || "").trim();
+  // gemini-2.0-flash는 현재 free tier limit: 0 오류가 반복되어 Flash-Lite로 보정한다.
+  if (!model || model === "gemini-2.0-flash") return "gemini-2.5-flash-lite";
+  return model;
+}
+
 async function withTimeout(promiseFactory, ms = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -62,7 +69,7 @@ async function askOpenAI(env, prompt, override = {}) {
 
 async function askGemini(env, prompt, override = {}) {
   const apiKey = override.apiKey || env.GEMINI_API_KEY;
-  const model = override.model || env.GEMINI_MODEL || "gemini-2.0-flash";
+  const model = geminiModel(override.model || env.GEMINI_MODEL);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await withTimeout((signal) => fetch(url, {
     method: "POST",

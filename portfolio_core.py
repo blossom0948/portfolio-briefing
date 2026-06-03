@@ -1435,6 +1435,13 @@ def friendly_ai_error(message: str) -> str:
     return "외부 AI 제공자가 일시적으로 응답하지 않았습니다."
 
 
+def gemini_model() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    if model == "gemini-2.0-flash":
+        return "gemini-2.5-flash-lite"
+    return model
+
+
 def parse_json_block(text: str) -> dict[str, Any] | None:
     cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned)
@@ -1524,7 +1531,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
             openai_warning = f"OpenAI({os.environ.get('OPENAI_VISION_MODEL') or 'gpt-4o-mini'}): {friendly_ai_error(str(exc))}"
             if os.environ.get("GEMINI_API_KEY"):
                 try:
-                    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+                    model = gemini_model()
                     response = requests.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
                         params={"key": os.environ["GEMINI_API_KEY"]},
@@ -1551,7 +1558,7 @@ def analyze_capture_image(image_base64: str, mime_type: str = "image/png") -> di
                     result["model"] = model
                     return result
                 except Exception as gemini_exc:
-                    return {"summary": "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", "holdings": [], "warnings": [openai_warning, f"Gemini({os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')}): {friendly_ai_error(str(gemini_exc))}"]}
+                    return {"summary": "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", "holdings": [], "warnings": [openai_warning, f"Gemini({gemini_model()}): {friendly_ai_error(str(gemini_exc))}"]}
             return {"summary": "AI 이미지 분석에 실패했습니다.", "holdings": [], "warnings": [openai_warning]}
     return {
         "summary": "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
@@ -1593,7 +1600,7 @@ def ask_openai(prompt: str) -> str:
 
 
 def ask_gemini(prompt: str) -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    model = gemini_model()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
         response = requests.post(
