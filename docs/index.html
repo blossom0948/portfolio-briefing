@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -15,35 +15,35 @@
           <span class="landing-mark">B</span>
           <span>Briefolio</span>
         </div>
-        <nav class="landing-links" aria-label="?쒕뵫 硫붾돱">
-          <button class="landing-link" data-open-view="dashboard">??쒕낫??/button>
-          <button class="landing-link" data-open-view="manage">二쇱떇 ?ㅼ젙</button>
-          <button class="landing-link" data-open-view="pro">?꾨줈 遺꾩꽍</button>
-          <button class="landing-link" data-open-view="briefing">釉뚮━??/button>
+        <nav class="landing-links" aria-label="랜딩 메뉴">
+          <button class="landing-link" data-open-view="dashboard">대시보드</button>
+          <button class="landing-link" data-open-view="manage">주식 설정</button>
+          <button class="landing-link" data-open-view="pro">프로 분석</button>
+          <button class="landing-link" data-open-view="briefing">브리핑</button>
         </nav>
       </header>
 
       <div class="landing-content">
         <p class="landing-kicker">Portfolio Now Brief</p>
-        <h1>??二쇱떇 釉뚮━?묓븯湲?/h1>
+        <h1>내 주식 브리핑하기</h1>
         <div class="landing-actions">
-          <button id="enterDashboardBtn" class="landing-primary">??쒕낫???닿린</button>
-          <button id="landingBriefBtn" class="landing-secondary">?ㅻ뒛 釉뚮━??蹂닿린</button>
+          <button id="enterDashboardBtn" class="landing-primary">대시보드 열기</button>
+          <button id="landingBriefBtn" class="landing-secondary">오늘 브리핑 보기</button>
         </div>
       </div>
 
-      <div class="stock-orbit" id="landingStockButtons" aria-label="諛곌꼍 李⑦듃 醫낅ぉ ?좏깮"></div>
+      <div class="stock-orbit" id="landingStockButtons" aria-label="배경 차트 종목 선택"></div>
 
       <div class="landing-ticker">
-        <span id="landingStockName">李⑦듃 遺덈윭?ㅻ뒗 以?/span>
+        <span id="landingStockName">차트 불러오는 중</span>
         <strong id="landingStockChange">-</strong>
-        <small id="landingStockRange">理쒓렐 6媛쒖썡</small>
+        <small id="landingStockRange">최근 6개월</small>
       </div>
     </section>
 
     <div id="appShell" class="app-shell" hidden>
     <aside class="sidebar">
-      <button class="brand brand-button" type="button" data-return-landing aria-label="?쒕뵫 ?섏씠吏濡??뚯븘媛湲?>
+      <button class="brand brand-button" type="button" data-return-landing aria-label="랜딩 페이지로 돌아가기">
         <span class="brand-mark">B</span>
         <div>
           <strong>Briefolio</strong>
@@ -51,11 +51,11 @@
         </div>
       </button>
       <nav>
-        <button class="nav-item active" data-view="dashboard">??쒕낫??/button>
-        <button class="nav-item" data-view="manage">二쇱떇 ?ㅼ젙</button>
-        <button class="nav-item" data-view="pro">?꾨줈 遺꾩꽍</button>
-        <button class="nav-item" data-view="briefing">釉뚮━??쨌 AI</button>
-        <button class="nav-item" data-view="settings">?뚮┝ ?ㅼ젙</button>
+        <button class="nav-item active" data-view="dashboard">대시보드</button>
+        <button class="nav-item" data-view="manage">주식 설정</button>
+        <button class="nav-item" data-view="pro">프로 분석</button>
+        <button class="nav-item" data-view="briefing">브리핑 · AI</button>
+        <button class="nav-item" data-view="settings">알림 설정</button>
       </nav>
     </aside>
 
@@ -63,43 +63,43 @@
       <section class="hero">
         <div>
           <p class="eyebrow">Portfolio Now Brief</p>
-          <h1>???ы듃?대━?ㅻ? ?꾩묠 釉뚮━?묒쿂??/h1>
-          <p>媛寃? ?댁뒪, 二쇱떇 紐⑥쑝湲? AI 吏덈Ц源뚯? ???붾㈃?먯꽌 愿由ы빀?덈떎.</p>
+          <h1>내 포트폴리오를 아침 브리핑처럼</h1>
+          <p>가격, 뉴스, 주식 모으기, AI 질문까지 한 화면에서 관리합니다.</p>
         </div>
         <div class="hero-actions">
-          <button id="refreshBtn">?덈줈怨좎묠</button>
-          <button id="sendBtn" class="primary">?뚯뒪??硫붿씪</button>
+          <button id="refreshBtn">새로고침</button>
+          <button id="sendBtn" class="primary">테스트 메일</button>
         </div>
       </section>
 
       <section id="view-dashboard" class="view active">
         <div class="metrics">
-          <div><span>珥??됯???/span><strong id="totalKrw">-</strong></div>
-          <div><span>?щ윭 ?먯궛</span><strong id="totalUsd">-</strong></div>
-          <div><span>耳쒖쭊 紐⑥쑝湲?/span><strong id="activePlans">-</strong></div>
-          <div><span>?낅뜲?댄듃</span><strong id="updatedAt">-</strong></div>
+          <div><span>총 평가액</span><strong id="totalKrw">-</strong></div>
+          <div><span>달러 자산</span><strong id="totalUsd">-</strong></div>
+          <div><span>켜진 모으기</span><strong id="activePlans">-</strong></div>
+          <div><span>업데이트</span><strong id="updatedAt">-</strong></div>
         </div>
 
         <div class="dashboard-grid">
           <section class="panel span-2">
             <div class="section-head">
               <div>
-                <p class="eyebrow">媛寃??붿빟</p>
-                <h2>蹂댁쑀 醫낅ぉ</h2>
+                <p class="eyebrow">가격 요약</p>
+                <h2>보유 종목</h2>
               </div>
             </div>
             <div id="holdingCards" class="holding-grid"></div>
           </section>
 
           <section class="panel">
-            <p class="eyebrow">援?궡 ?댁뒪</p>
-            <h2>?ㅻ뒛??二쇱슂 ?댁뒪</h2>
+            <p class="eyebrow">국내 뉴스</p>
+            <h2>오늘의 주요 뉴스</h2>
             <div id="domesticNews" class="news-list compact"></div>
           </section>
 
           <section class="panel">
-            <p class="eyebrow">?댁쇅 ?댁뒪</p>
-            <h2>踰덉뿭 ?붿빟</h2>
+            <p class="eyebrow">해외 뉴스</p>
+            <h2>번역 요약</h2>
             <div id="overseasNews" class="news-list compact"></div>
           </section>
         </div>
@@ -109,19 +109,19 @@
         <section class="panel discover-panel">
           <div class="section-head">
             <div>
-              <p class="eyebrow">諛쒓껄</p>
-              <h2>?꾩껜 二쇱떇 蹂닿린</h2>
+              <p class="eyebrow">발견</p>
+              <h2>전체 주식 보기</h2>
             </div>
             <div class="discover-search">
-              <input id="discoverSearch" placeholder="醫낅ぉ紐? ?곗빱 寃??>
-              <button id="discoverSearchBtn" class="primary">寃??/button>
+              <input id="discoverSearch" placeholder="종목명, 티커 검색">
+              <button id="discoverSearchBtn" class="primary">검색</button>
             </div>
           </div>
-          <div class="discover-tabs" aria-label="醫낅ぉ 移댄뀒怨좊━">
-            <button class="discover-tab active" data-discover-category="us">?눣?눡 ?댁쇅二쇱떇</button>
-            <button class="discover-tab" data-discover-category="kr">?눖?눟 援?궡二쇱떇</button>
+          <div class="discover-tabs" aria-label="종목 카테고리">
+            <button class="discover-tab active" data-discover-category="us">🇺🇸 해외주식</button>
+            <button class="discover-tab" data-discover-category="kr">🇰🇷 국내주식</button>
             <button class="discover-tab" data-discover-category="etf">ETF</button>
-            <button class="discover-tab" data-discover-category="bond">梨꾧텒</button>
+            <button class="discover-tab" data-discover-category="bond">채권</button>
           </div>
           <div id="discoverResults" class="discover-list"></div>
           <div id="discoverAction" class="discover-action" hidden></div>
@@ -129,38 +129,39 @@
 
         <div class="two-col">
           <section class="panel">
-            <p class="eyebrow">二쇱떇 ?ㅼ젙</p>
-            <h2>醫낅ぉ 異붽?</h2>
+            <p class="eyebrow">주식 설정</p>
+            <h2>종목 추가</h2>
             <form id="holdingForm" class="form-grid">
-              <label>醫낅ぉ紐?input name="name" placeholder="?? Apple"></label>
-              <label>?곗빱<input name="symbol" placeholder="?? AAPL"></label>
-              <label>?쒖옣<select name="market"><option value="US">誘멸뎅</option><option value="KR">?쒓뎅</option></select></label>
-              <label>?꾩옱 ?섎웾<input name="quantity" type="number" step="0.000001" value="0"></label>
-              <label>?됯퇏 ?④?
+              <label>종목명<input name="name" placeholder="예: Apple"></label>
+              <label>티커<input name="symbol" placeholder="예: AAPL"></label>
+              <label>시장<select name="market"><option value="US">미국</option><option value="KR">한국</option></select></label>
+              <label>현재 수량<input name="quantity" type="number" step="0.000001" value="0"></label>
+              <label>평균 단가
                 <div class="inline-control">
                   <input name="average_price" type="number" step="0.01" value="0">
-                  <select name="average_price_currency"><option value="KRW">?먰솕 KRW</option><option value="USD" selected>?щ윭 USD</option></select>
+                  <select name="average_price_currency"><option value="KRW">원화 KRW</option><option value="USD" selected>달러 USD</option></select>
                 </div>
               </label>
-              <button class="primary" type="submit">醫낅ぉ 異붽?</button>
+              <button class="primary" type="submit">종목 추가</button>
             </form>
           </section>
 
           <section class="panel">
-            <p class="eyebrow">留ㅼ닔 湲곕줉</p>
-            <h2>?嫄곕굹 ???댁뿭 諛섏쁺</h2>
+            <p class="eyebrow">매수 기록</p>
+            <h2>샀거나 판 내역 반영</h2>
             <form id="tradeForm" class="form-grid">
-              <label>醫낅ぉ<select name="holding_id" id="tradeHolding"></select></label>
-              <label>援щ텇<select name="side"><option value="buy">留ㅼ닔</option><option value="sell">留ㅻ룄</option></select></label>
-              <label>?섎웾<input name="quantity" type="number" step="0.000001" placeholder="?뚯닔??媛??></label>
-              <label>媛寃?                <div class="inline-control">
-                  <input name="price" type="number" step="0.01" placeholder="1二?媛寃?>
-                  <select name="price_currency"><option value="KRW">?먰솕 KRW</option><option value="USD" selected>?щ윭 USD</option></select>
+              <label>종목<select name="holding_id" id="tradeHolding"></select></label>
+              <label>구분<select name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
+              <label>수량<input name="quantity" type="number" step="0.000001" placeholder="소수점 가능"></label>
+              <label>가격
+                <div class="inline-control">
+                  <input name="price" type="number" step="0.01" placeholder="1주 가격">
+                  <select name="price_currency"><option value="KRW">원화 KRW</option><option value="USD" selected>달러 USD</option></select>
                 </div>
               </label>
-              <label>?좎쭨<input name="date" type="date"></label>
-              <label>硫붾え<input name="memo" placeholder="?? 泥?留ㅼ닔"></label>
-              <button class="primary" type="submit">諛섏쁺?섍린</button>
+              <label>날짜<input name="date" type="date"></label>
+              <label>메모<input name="memo" placeholder="예: 첫 매수"></label>
+              <button class="primary" type="submit">반영하기</button>
             </form>
           </section>
         </div>
@@ -168,10 +169,10 @@
         <section class="panel">
           <div class="section-head">
             <div>
-              <p class="eyebrow">二쇱떇 紐⑥쑝湲?/p>
-              <h2>?뺢린 留ㅼ닔 怨꾪쉷</h2>
+              <p class="eyebrow">주식 모으기</p>
+              <h2>정기 매수 계획</h2>
             </div>
-            <span class="hint">踰꾪듉???꾨Ⅴ硫??꾩옱 議고쉶媛 湲곗??쇰줈 ???섎웾??+?⑸땲?? 誘멸뎅?μ? 蹂댄넻 諛?10:30 ?댄썑媛 ???먯뿰?ㅻ읇?듬땲??</span>
+            <span class="hint">버튼을 누르면 현재 조회가 기준으로 앱 수량이 +됩니다. 미국장은 보통 밤 10:30 이후가 더 자연스럽습니다.</span>
           </div>
           <div id="planList" class="plan-list"></div>
         </section>
@@ -181,49 +182,49 @@
         <section class="panel pro-command">
           <div>
             <p class="eyebrow">Pro Control</p>
-            <h2>???ы듃?대━???섏궗寃곗젙 蹂대뱶</h2>
-            <p>吏꾨떒, 由щ갭?곗떛, ?곷┰ ?쒕??덉씠?? ?쇱젙, ?쇱?, AI 吏덈Ц?????붾㈃?먯꽌 移댄뀒怨좊━蹂꾨줈 遊낅땲??</p>
+            <h2>내 포트폴리오 의사결정 보드</h2>
+            <p>진단, 리밸런싱, 적립 시뮬레이션, 일정, 일지, AI 질문을 한 화면에서 카테고리별로 봅니다.</p>
           </div>
           <div class="score-ring" id="healthRing" style="--score: 0">
             <strong id="healthScore">-</strong>
-            <span>嫄닿컯 ?먯닔</span>
+            <span>건강 점수</span>
           </div>
         </section>
 
-        <div class="pro-tabs" aria-label="?꾨줈 遺꾩꽍 移댄뀒怨좊━">
-          <button class="pro-tab active" data-pro-panel="diagnosis">吏꾨떒</button>
-          <button class="pro-tab" data-pro-panel="plan">怨꾪쉷</button>
-          <button class="pro-tab" data-pro-panel="events">?대깽??쨌 ?뚮┝</button>
-          <button class="pro-tab" data-pro-panel="journal">?ъ옄 ?쇱?</button>
-          <button class="pro-tab" data-pro-panel="ai">AI 肄붿튂</button>
+        <div class="pro-tabs" aria-label="프로 분석 카테고리">
+          <button class="pro-tab active" data-pro-panel="diagnosis">진단</button>
+          <button class="pro-tab" data-pro-panel="plan">계획</button>
+          <button class="pro-tab" data-pro-panel="events">이벤트 · 알림</button>
+          <button class="pro-tab" data-pro-panel="journal">투자 일지</button>
+          <button class="pro-tab" data-pro-panel="ai">AI 코치</button>
         </div>
 
         <div class="pro-panel active" data-pro-panel-view="diagnosis">
           <div class="insight-grid">
             <section class="panel">
               <p class="eyebrow">Health</p>
-              <h2>?ы듃?대━??嫄닿컯??/h2>
-              <p id="healthSummary" class="insight-copy">遺꾩꽍 ?곗씠?곕? 遺덈윭?ㅻ뒗 以묒엯?덈떎.</p>
+              <h2>포트폴리오 건강도</h2>
+              <p id="healthSummary" class="insight-copy">분석 데이터를 불러오는 중입니다.</p>
               <div id="healthReasons" class="chip-list"></div>
             </section>
             <section class="panel">
               <p class="eyebrow">Rebalancing</p>
-              <h2>由щ갭?곗떛 異붿쿇</h2>
+              <h2>리밸런싱 추천</h2>
               <div id="rebalanceList" class="action-list"></div>
             </section>
             <section class="panel">
               <p class="eyebrow">News Impact</p>
-              <h2>?댁뒪 ?곹뼢 ?먯닔</h2>
+              <h2>뉴스 영향 점수</h2>
               <div id="newsImpact" class="impact-meter"></div>
             </section>
             <section class="panel">
               <p class="eyebrow">Risk Radar</p>
-              <h2>?ㅻ뒛 ?꾪뿕 ?덉씠??/h2>
+              <h2>오늘 위험 레이더</h2>
               <div id="riskRadar" class="risk-radar"></div>
             </section>
             <section class="panel">
               <p class="eyebrow">Benchmark</p>
-              <h2>踰ㅼ튂留덊겕 鍮꾧탳</h2>
+              <h2>벤치마크 비교</h2>
               <div id="benchmarkList" class="action-list"></div>
             </section>
           </div>
@@ -234,17 +235,17 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow">What-if</p>
-                <h2>?곷┰ ?쒕??덉씠??/h2>
+                <h2>적립 시뮬레이터</h2>
               </div>
-              <button id="runWhatIfBtn" class="primary">怨꾩궛?섍린</button>
+              <button id="runWhatIfBtn" class="primary">계산하기</button>
             </div>
             <div class="simulator-grid">
-              <label>醫낅ぉ<select id="simHolding"></select></label>
-              <label>留ㅼ닔 湲덉븸<input id="simAmount" type="number" step="1000" value="10000"></label>
-              <label>湲곗? ?듯솕<select id="simCurrency"><option value="KRW">?먰솕 KRW</option><option value="USD">?щ윭 USD</option></select></label>
-              <label>二쇨린<select id="simFrequency"><option value="weekly">留ㅼ＜</option><option value="monthly">留ㅼ썡</option></select></label>
-              <label>湲곌컙<input id="simMonths" type="number" min="1" max="120" value="12"></label>
-              <label>??湲곕??섏씡瑜?input id="simReturn" type="number" step="0.1" value="6"></label>
+              <label>종목<select id="simHolding"></select></label>
+              <label>매수 금액<input id="simAmount" type="number" step="1000" value="10000"></label>
+              <label>기준 통화<select id="simCurrency"><option value="KRW">원화 KRW</option><option value="USD">달러 USD</option></select></label>
+              <label>주기<select id="simFrequency"><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
+              <label>기간<input id="simMonths" type="number" min="1" max="120" value="12"></label>
+              <label>연 기대수익률<input id="simReturn" type="number" step="0.1" value="6"></label>
             </div>
             <div id="whatIfResult" class="scenario-grid"></div>
           </section>
@@ -254,12 +255,12 @@
           <div class="two-col">
             <section class="panel">
               <p class="eyebrow">Calendar</p>
-              <h2>?ㅺ??ㅻ뒗 ?뺤씤 ?쇱젙</h2>
+              <h2>다가오는 확인 일정</h2>
               <div id="eventList" class="event-list"></div>
             </section>
             <section class="panel">
               <p class="eyebrow">Alert Rules</p>
-              <h2>異붿쿇 ?뚮┝ 洹쒖튃</h2>
+              <h2>추천 알림 규칙</h2>
               <div id="alertList" class="action-list"></div>
             </section>
           </div>
@@ -270,11 +271,11 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow">Journal</p>
-                <h2>AI ?ъ옄 ?쇱?</h2>
+                <h2>AI 투자 일지</h2>
               </div>
-              <button id="saveJournalBtn" class="primary">?쇱? ???/button>
+              <button id="saveJournalBtn" class="primary">일지 저장</button>
             </div>
-            <textarea id="journalNote" placeholder="?? ?ㅻ뒛 ?댁뒪??諛섎룄泥?履쎌씠 醫뗭븘 蹂댁씠吏留? ???곷┰ 怨꾪쉷? 洹몃?濡??좎??쒕떎."></textarea>
+            <textarea id="journalNote" placeholder="예: 오늘 뉴스는 반도체 쪽이 좋아 보이지만, 월 적립 계획은 그대로 유지한다."></textarea>
             <div id="journalList" class="journal-list"></div>
           </section>
         </div>
@@ -284,17 +285,17 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow">AI Coach</p>
-                <h2>???곗씠??湲곕컲 吏덈Ц</h2>
+                <h2>내 데이터 기반 질문</h2>
               </div>
-              <button id="proAiAskBtn" class="primary">吏덈Ц?섍린</button>
+              <button id="proAiAskBtn" class="primary">질문하기</button>
             </div>
             <div class="quick-prompts">
-              <button data-prompt="?ㅻ뒛 ???ы듃?대━?ㅼ뿉??媛??癒쇱? ?뺤씤??由ъ뒪?щ? ?뚮젮以?">?ㅻ뒛 由ъ뒪??/button>
-              <button data-prompt="1???숈븞 ?꾩옱 ?곷┰ 怨꾪쉷???좎??섎㈃ ?대뒓 ?뺣룄瑜??ъ옄?섍쾶 ?섎뒗吏 ?ㅻ챸?댁쨾.">1???곷┰</button>
-              <button data-prompt="?댁뒪? 媛寃⑹쓣 媛숈씠 蹂닿퀬 ?ㅻ뒛 留ㅼ닔, 蹂대쪟, ?먭? 以?臾댁뾿???섏?吏 ?뚮젮以?">?ㅻ뒛 ?됰룞</button>
+              <button data-prompt="오늘 내 포트폴리오에서 가장 먼저 확인할 리스크를 알려줘.">오늘 리스크</button>
+              <button data-prompt="1년 동안 현재 적립 계획을 유지하면 어느 정도를 투자하게 되는지 설명해줘.">1년 적립</button>
+              <button data-prompt="뉴스와 가격을 같이 보고 오늘 매수, 보류, 점검 중 무엇이 나은지 알려줘.">오늘 행동</button>
             </div>
-            <textarea id="proAiQuestion" placeholder="?? ?쇱꽦?꾩옄? QQQM??1?꾧컙 怨꾩냽 紐⑥쑝硫??쇰쭏瑜??곌퀬 ?대뼡 ?쒕굹由ъ삤瑜?湲곕??????덉뼱?"></textarea>
-            <pre id="proAiAnswer" class="answer">?몃? AI媛 留됲??????덉뿉??怨꾩궛 ?듬????댁뼱媛묐땲??</pre>
+            <textarea id="proAiQuestion" placeholder="예: 삼성전자와 QQQM을 1년간 계속 모으면 얼마를 쓰고 어떤 시나리오를 기대할 수 있어?"></textarea>
+            <pre id="proAiAnswer" class="answer">외부 AI가 막혀도 앱 안에서 계산 답변을 이어갑니다.</pre>
           </section>
         </div>
       </section>
@@ -305,40 +306,40 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow">Now Brief</p>
-                <h2>硫붿씪濡?諛쏆쓣 ?댁슜</h2>
+                <h2>메일로 받을 내용</h2>
               </div>
-              <button id="copyBtn">蹂듭궗</button>
+              <button id="copyBtn">복사</button>
             </div>
             <div id="briefHighlights" class="brief-highlights"></div>
-            <pre id="briefingText">遺덈윭?ㅻ뒗 以?..</pre>
+            <pre id="briefingText">불러오는 중...</pre>
           </section>
 
           <section class="panel">
             <div class="section-head">
               <div>
-                <p class="eyebrow">AI 吏덈Ц</p>
-                <h2>???ы듃?대━?ㅼ뿉 ???臾쇱뼱蹂닿린</h2>
+                <p class="eyebrow">AI 질문</p>
+                <h2>내 포트폴리오에 대해 물어보기</h2>
               </div>
-              <button id="exampleQuestionBtn">?덉떆</button>
+              <button id="exampleQuestionBtn">예시</button>
             </div>
-            <textarea id="aiQuestion" placeholder="?? ?쇱꽦?꾩옄瑜?留ㅼ＜ 1留뚯썝??1??紐⑥쑝硫?珥??쇰쭏瑜??곌퀬, 二쇨?媛 -20%, 0%, +20%????寃곌낵媛 ?대뼸寃???"></textarea>
-            <button id="askAiBtn" class="primary wide">AI ?듬? 諛쏄린</button>
-            <pre id="aiAnswer" class="answer">?몃? AI媛 留됲??????덉뿉??怨꾩궛 ?듬????댁뼱媛묐땲??</pre>
+            <textarea id="aiQuestion" placeholder="예: 삼성전자를 매주 1만원씩 1년 모으면 총 얼마를 쓰고, 주가가 -20%, 0%, +20%일 때 결과가 어떻게 돼?"></textarea>
+            <button id="askAiBtn" class="primary wide">AI 답변 받기</button>
+            <pre id="aiAnswer" class="answer">외부 AI가 막혀도 앱 안에서 계산 답변을 이어갑니다.</pre>
           </section>
         </div>
       </section>
 
       <section id="view-settings" class="view">
         <section class="panel">
-          <p class="eyebrow">?뚮┝ ?ㅼ젙</p>
-          <h2>?꾩묠 釉뚮━??硫붿씪</h2>
+          <p class="eyebrow">알림 설정</p>
+          <h2>아침 브리핑 메일</h2>
           <form id="settingsForm" class="settings-grid">
-            <label>諛쏆쓣 ?대찓??input name="recipient" type="email" placeholder="name@example.com"></label>
-            <label>諛쒖넚 ?쒓컙<input name="send_time" type="time" value="07:00"></label>
-            <label>?쒓컙?<input name="timezone" value="Asia/Seoul"></label>
-            <button class="primary" type="submit">?ㅼ젙 ???/button>
+            <label>받을 이메일<input name="recipient" type="email" placeholder="name@example.com"></label>
+            <label>발송 시간<input name="send_time" type="time" value="07:00"></label>
+            <label>시간대<input name="timezone" value="Asia/Seoul"></label>
+            <button class="primary" type="submit">설정 저장</button>
           </form>
-          <p class="sync-note">留ㅼ씪 ?뚮┝?????ㅼ젙??諛붾줈 諛섏쁺?섎젮硫?`.env`??`PORTFOLIO_CONFIG_URL`???덉뼱???⑸땲??</p>
+          <p class="sync-note">매일 알림에 웹 설정을 바로 반영하려면 `.env`에 `PORTFOLIO_CONFIG_URL`이 있어야 합니다.</p>
         </section>
       </section>
     </main>
@@ -352,9 +353,9 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">AI Sync</p>
-            <h2>?좎뒪 罹≪쿂濡?留욎텛湲?/h2>
+            <h2>토스 캡처로 맞추기</h2>
           </div>
-          <button id="aiDockClose" type="button">?リ린</button>
+          <button id="aiDockClose" type="button">닫기</button>
         </div>
         <div class="ai-key-box">
           <div class="ai-key-row">
@@ -366,25 +367,25 @@
               </select>
             </label>
             <label>Model
-              <input id="aiModel" placeholder="鍮꾩슦硫??먮룞">
+              <input id="aiModel" placeholder="비우면 자동">
             </label>
           </div>
           <label>API Key
-            <input id="aiApiKey" type="password" autocomplete="off" placeholder="??釉뚮씪?곗??먮쭔 ???>
+            <input id="aiApiKey" type="password" autocomplete="off" placeholder="이 브라우저에만 저장">
           </label>
-          <button id="saveAiKeyBtn" type="button">AI ?????/button>
-          <small id="aiKeyStatus">釉뚮씪?곗? AI ???곹깭瑜??뺤씤?섎뒗 以묒엯?덈떎.</small>
-          <small>OpenAI ?ㅻ뒗 sk-, Gemini ?ㅻ뒗 AIza prefix濡??먮룞 ?먮퀎?⑸땲??</small>
+          <button id="saveAiKeyBtn" type="button">AI 키 저장</button>
+          <small id="aiKeyStatus">브라우저 AI 키 상태를 확인하는 중입니다.</small>
+          <small>OpenAI 키는 sk-, Gemini 키는 AIza prefix로 자동 판별합니다.</small>
         </div>
-        <textarea id="aiDockQuestion" placeholder="?ы듃?대━?ㅼ뿉 ???臾쇱뼱蹂댁꽭?? ?? ?대쾲 二?紐⑥쑝湲??꾩뿉 萸먮????뺤씤?좉퉴?"></textarea>
-        <button id="aiDockAsk" class="primary wide" type="button">AI?먭쾶 臾산린</button>
-        <pre id="aiDockAnswer" class="answer compact-answer">罹≪쿂瑜??щ━硫??꾩옱 ??湲곕줉怨?鍮꾧탳?댁꽌 ?좎뒪 ?붾㈃ 湲곗??쇰줈 留욎텧 ???덉뒿?덈떎.</pre>
+        <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
+        <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
+        <pre id="aiDockAnswer" class="answer compact-answer">캡처를 올리면 현재 앱 기록과 비교해서 토스 화면 기준으로 맞출 수 있습니다.</pre>
         <label class="capture-drop">
           <input id="tossCaptureInput" type="file" accept="image/*">
-          <span>?좎뒪利앷텒 罹≪쿂 ?좏깮</span>
+          <span>토스증권 캡처 선택</span>
         </label>
         <div id="capturePreview" class="capture-preview"></div>
-        <button id="applyCaptureBtn" class="primary wide" type="button" disabled>罹≪쿂 湲곗??쇰줈 諛섏쁺</button>
+        <button id="applyCaptureBtn" class="primary wide" type="button" disabled>캡처 기준으로 반영</button>
       </section>
     </aside>
 
@@ -393,4 +394,3 @@
     <script src="./landing.js?v=20260603-capture-full-fix"></script>
   </body>
 </html>
-
