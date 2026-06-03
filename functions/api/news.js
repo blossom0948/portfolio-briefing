@@ -60,6 +60,31 @@ function parseRssItems(xml = "") {
   return items;
 }
 
+function parseYahooItems(xml = "", symbol = "") {
+  return parseRssItems(xml).map((item) => ({
+    ...item,
+    title_ko: item.title,
+    symbol,
+  }));
+}
+
+function parseNaverItems(html = "") {
+  const items = [];
+  const today = kstDate().replaceAll("-", ".");
+  for (const match of html.matchAll(/<a[^>]+class="[^"]*news_tit[^"]*"[^>]+href="([^"]+)"[^>]*title="([^"]+)"[^>]*>/g)) {
+    const link = decodeXml(match[1]).trim();
+    const title = decodeXml(match[2]).trim();
+    if (!title || !link) continue;
+    const start = Math.max(0, match.index - 900);
+    const end = Math.min(html.length, match.index + 900);
+    const context = decodeXml(html.slice(start, end));
+    const looksToday = context.includes("분 전") || context.includes("시간 전") || context.includes(today);
+    if (!looksToday) continue;
+    items.push({ title, title_ko: title, link, source: "Naver News", published_at: new Date().toISOString() });
+  }
+  return items;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -78,6 +103,20 @@ async function googleNews(query, { hl = "ko", gl = "KR", ceid = "KR:ko", limit =
   const response = await fetchWithTimeout(url, { headers: { "user-agent": "Briefolio/1.0" } });
   if (!response.ok) return [];
   return parseRssItems(await response.text()).slice(0, limit);
+}
+
+async function naverNews(query, limit = 3) {
+  const url = `https://search.naver.com/search.naver?where=news&sort=1&nso=so:dd,p:1d,a:all&query=${encodeURIComponent(query)}`;
+  const response = await fetchWithTimeout(url, { headers: { "user-agent": "Mozilla/5.0 Briefolio/1.0" } });
+  if (!response.ok) return [];
+  return parseNaverItems(await response.text()).slice(0, limit);
+}
+
+async function yahooFinanceNews(symbol, limit = 3) {
+  const url = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(symbol)}&region=US&lang=en-US`;
+  const response = await fetchWithTimeout(url, { headers: { "user-agent": "Briefolio/1.0" } });
+  if (!response.ok) return [];
+  return parseYahooItems(await response.text(), symbol).slice(0, limit);
 }
 
 function normalizeTerm(value = "") {
@@ -155,14 +194,62 @@ async function collectNews(queries, options, terms, market) {
   return items;
 }
 
+async function collectDomesticFallback(queries, terms) {
+  const seen = new Set();
+  const items = [];
+  const results = await Promise.allSettled([...new Set(queries)].slice(0, 5).map((query) => naverNews(query, 5)));
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    for (const item of result.value || []) {
+      const key = `${item.title}|${item.link}`.toLowerCase();
+      if (seen.has(key) || !isRelevant(item, terms, "domestic")) continue;
+      seen.add(key);
+      items.push(item);
+      if (items.length >= 3) return items;
+    }
+  }
+  return items;
+}
+
+async function collectOverseasFallback(portfolio, terms) {
+  const holdings = Array.isArray(portfolio?.holdings) ? portfolio.holdings : [];
+  const symbols = holdings
+    .filter((item) => item.market !== "KR")
+    .map((item) => String(item.symbol || "").trim())
+    .filter(Boolean);
+  const fallbackSymbols = symbols.length ? symbols : ["QQQM", "VOO"];
+  const seen = new Set();
+  const items = [];
+  const results = await Promise.allSettled([...new Set(fallbackSymbols)].slice(0, 6).map((symbol) => yahooFinanceNews(symbol, 5)));
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    for (const item of result.value || []) {
+      const key = `${item.title}|${item.link}`.toLowerCase();
+      if (seen.has(key) || !isRelevant(item, terms, "overseas")) continue;
+      seen.add(key);
+      items.push(item);
+      if (items.length >= 3) return items;
+    }
+  }
+  return items;
+}
+
 export async function onRequestGet({ env }) {
   try {
     const portfolio = await fetchPortfolio(env).catch(() => defaultPortfolio());
     const queries = holdingsQueries(portfolio);
-    const [domestic, overseas] = await Promise.all([
+    let [domestic, overseas] = await Promise.all([
       collectNews(queries.domesticQueries, { hl: "ko", gl: "KR", ceid: "KR:ko" }, queries.domesticTerms, "domestic"),
       collectNews(queries.overseasQueries, { hl: "en", gl: "US", ceid: "US:en" }, queries.overseasTerms, "overseas"),
     ]);
+    if (domestic.length < 3) {
+      const fallback = await collectDomesticFallback(queries.domesticQueries, queries.domesticTerms);
+      domestic = [...domestic, ...fallback].filter((item, index, list) => list.findIndex((other) => other.title === item.title) === index).slice(0, 3);
+    }
+    if (overseas.length < 3) {
+      const fallback = await collectOverseasFallback(portfolio, queries.overseasTerms);
+      overseas = [...overseas, ...fallback].filter((item, index, list) => list.findIndex((other) => other.title === item.title) === index).slice(0, 3);
+    }
     return json({
       domestic,
       overseas,
