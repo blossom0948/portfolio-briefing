@@ -60,12 +60,22 @@ function parseRssItems(xml = "") {
   return items;
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function googleNews(query, { hl = "ko", gl = "KR", ceid = "KR:ko", limit = 3 } = {}) {
   const today = kstDate();
   const tomorrow = kstDate(1);
   const rssQuery = `${query} when:1d after:${today} before:${tomorrow}`;
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(rssQuery)}&hl=${hl}&gl=${gl}&ceid=${ceid}&scoring=n`;
-  const response = await fetch(url, { headers: { "user-agent": "Briefolio/1.0" } });
+  const response = await fetchWithTimeout(url, { headers: { "user-agent": "Briefolio/1.0" } });
   if (!response.ok) return [];
   return parseRssItems(await response.text()).slice(0, limit);
 }
@@ -124,8 +134,11 @@ function isRelevant(item, terms, market) {
 async function collectNews(queries, options, terms, market) {
   const seen = new Set();
   const items = [];
-  for (const query of queries) {
-    const found = await googleNews(query, { ...options, limit: 6 });
+  const limitedQueries = [...new Set(queries)].slice(0, 8);
+  const results = await Promise.allSettled(limitedQueries.map((query) => googleNews(query, { ...options, limit: 6 })));
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    const found = result.value || [];
     for (const item of found) {
       const key = `${item.title}|${item.source}`.toLowerCase();
       if (seen.has(key) || !isRelevant(item, terms, market)) continue;
