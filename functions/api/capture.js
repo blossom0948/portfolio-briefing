@@ -1,54 +1,82 @@
 import { json } from "../_shared.js";
 
-function providerProblem(message = "") {
-  return /quota|billing|insufficient|rate limit|api key|invalid|timeout|timed out/i.test(message);
-}
+const CAPTURE_PROMPT = [
+  "토스증권 보유 주식 화면 캡처를 읽어 JSON만 반환해.",
+  "반환 형식은 반드시 {\"summary\":\"...\",\"warnings\":[],\"holdings\":[]} 이어야 한다.",
+  "holdings 각 항목은 name, symbol, market, quantity, average_price, average_price_currency 필드를 가져야 한다.",
+  "market은 한국 주식이면 KR, 미국 주식이면 US로 써라.",
+  "average_price_currency는 KRW 또는 USD만 써라.",
+  "화면에 보이는 보유 수량과 평단만 사용하고, 보이지 않는 값은 0으로 둬라.",
+  "추측한 값이 있으면 warnings에 짧게 적어라.",
+].join("\n");
 
-function friendlyProviderMessage(message = "") {
-  const lowered = String(message).toLowerCase();
-  if (/quota|billing|insufficient|limit|usage|plan/.test(lowered)) {
-    return "AI 이미지 분석 한도 또는 결제 설정 문제입니다. 코드 고장이라기보다 AI 계정에서 현재 사용량이 막힌 상태입니다.";
-  }
-  if (/api key|invalid|unauthorized/.test(lowered)) {
-    return "AI API 키가 없거나 잘못되었습니다. Cloudflare Pages 환경 변수에서 키를 확인해야 합니다.";
-  }
-  if (/timeout|timed out/.test(lowered)) {
-    return "AI 응답 시간이 길어져 중단되었습니다. 캡처 이미지를 조금 더 작게 다시 올려보세요.";
-  }
-  return "AI 이미지 분석에 실패했습니다. 잠시 뒤 다시 시도하거나 더 선명한 캡처를 올려주세요.";
-}
-
-function providerWarning(provider, model, message) {
-  return `${provider}(${model}): ${friendlyProviderMessage(message)}`;
+function sanitizeError(message = "") {
+  return String(message)
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-***")
+    .replace(/AIza[A-Za-z0-9_-]+/g, "AIza***")
+    .slice(0, 800);
 }
 
 function parseJsonText(text = "") {
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  const cleaned = String(text)
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) return null;
+  if (!match) throw new Error(`AI 응답이 JSON이 아닙니다: ${cleaned.slice(0, 240)}`);
   return JSON.parse(match[0]);
+}
+
+function normalizeMarket(symbol, market) {
+  const rawMarket = String(market || "").trim().toUpperCase();
+  if (rawMarket === "KR" || rawMarket === "US") return rawMarket;
+  return /^\d+$/.test(String(symbol || "")) ? "KR" : "US";
+}
+
+function normalizeCurrency(currency, market) {
+  const rawCurrency = String(currency || "").trim().toUpperCase();
+  if (rawCurrency === "KRW" || rawCurrency === "USD") return rawCurrency;
+  return market === "KR" ? "KRW" : "USD";
 }
 
 function normalizeCapture(data) {
   const holdings = Array.isArray(data?.holdings) ? data.holdings : [];
   return {
-    summary: data?.summary || "캡처에서 읽은 보유 종목을 확인했습니다.",
-    warnings: Array.isArray(data?.warnings) ? data.warnings : [],
-    holdings: holdings.map((item) => ({
-      name: String(item.name || item.symbol || "").trim(),
-      symbol: String(item.symbol || "").trim().toUpperCase(),
-      market: String(item.market || (String(item.symbol || "").match(/^\d+$/) ? "KR" : "US")).trim().toUpperCase(),
-      quantity: Number(item.quantity || 0),
-      average_price: Number(item.average_price || 0),
-      average_price_currency: String(item.average_price_currency || (String(item.market || "").toUpperCase() === "KR" ? "KRW" : "USD")).trim().toUpperCase(),
-    })).filter((item) => item.symbol && item.quantity >= 0),
+    summary: String(data?.summary || "캡처에서 읽은 보유 종목을 확인했습니다."),
+    warnings: Array.isArray(data?.warnings) ? data.warnings.map((item) => String(item)) : [],
+    holdings: holdings.map((item) => {
+      const symbol = String(item.symbol || "").trim().toUpperCase();
+      const market = normalizeMarket(symbol, item.market);
+      return {
+        name: String(item.name || symbol).trim(),
+        symbol,
+        market,
+        quantity: Number(item.quantity || 0),
+        average_price: Number(item.average_price || 0),
+        average_price_currency: normalizeCurrency(item.average_price_currency, market),
+      };
+    }).filter((item) => item.symbol && Number.isFinite(item.quantity) && item.quantity >= 0),
   };
 }
 
-async function askOpenAIVision(env, image, mimeType, override = {}) {
-  const apiKey = override.apiKey || env.OPENAI_API_KEY;
-  const model = override.model || env.OPENAI_VISION_MODEL || "gpt-4o-mini";
-  const response = await fetch("https://api.openai.com/v1/responses", {
+function providerFromKey(selectedProvider = "", apiKey = "") {
+  const selected = String(selectedProvider || "").trim().toLowerCase();
+  const key = String(apiKey || "").trim();
+  // 핵심 수정: 사용자가 provider를 잘못 골라도 키 prefix로 실제 provider를 우선 판단한다.
+  if (key.startsWith("sk-")) return "openai";
+  if (key.startsWith("AIza")) return "gemini";
+  if (selected === "openai" || selected === "gemini") return selected;
+  return "";
+}
+
+function errorMessageFromResponse(data, fallback) {
+  return data?.error?.message || data?.error?.status || data?.message || fallback;
+}
+
+async function askOpenAIVision({ apiKey, model, image, mimeType }) {
+  // 핵심 수정: 이미지 입력은 Responses API 대신 vision에서 안정적인 Chat Completions 형식으로 보낸다.
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       authorization: `Bearer ${apiKey}`,
@@ -56,33 +84,25 @@ async function askOpenAIVision(env, image, mimeType, override = {}) {
     },
     body: JSON.stringify({
       model,
-      input: [{
+      temperature: 0,
+      max_tokens: 1200,
+      response_format: { type: "json_object" },
+      messages: [{
         role: "user",
         content: [
-          {
-            type: "input_text",
-            text: [
-              "토스증권 보유 주식 캡처를 읽어 JSON만 반환해.",
-              "필드: summary, warnings, holdings.",
-              "holdings 각 항목: name, symbol, market(US 또는 KR), quantity, average_price, average_price_currency(KRW 또는 USD).",
-              "화면에 안 보이는 값은 0으로 두고, 추측은 warnings에 적어.",
-            ].join("\n"),
-          },
-          { type: "input_image", image_url: `data:${mimeType};base64,${image}` },
+          { type: "text", text: CAPTURE_PROMPT },
+          { type: "image_url", image_url: { url: `data:${mimeType};base64,${image}`, detail: "high" } },
         ],
       }],
-      max_output_tokens: 1200,
     }),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "OpenAI vision failed");
-  const text = data.output_text || data.output?.flatMap((item) => item.content || []).map((part) => part.text || "").join("") || "";
-  return { ...normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] }), provider: "openai", model };
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${errorMessageFromResponse(data, "OpenAI vision failed")}`);
+  const text = data.choices?.[0]?.message?.content || "";
+  return normalizeCapture(parseJsonText(text));
 }
 
-async function askGeminiVision(env, image, mimeType, override = {}) {
-  const apiKey = override.apiKey || env.GEMINI_API_KEY;
-  const model = override.model || env.GEMINI_MODEL || "gemini-2.0-flash";
+async function askGeminiVision({ apiKey, model, image, mimeType }) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -90,75 +110,118 @@ async function askGeminiVision(env, image, mimeType, override = {}) {
       contents: [{
         role: "user",
         parts: [
-          { text: "토스증권 보유 주식 캡처를 읽어 JSON만 반환해. holdings에는 name, symbol, market, quantity, average_price, average_price_currency를 넣어." },
+          { text: CAPTURE_PROMPT },
           { inline_data: { mime_type: mimeType, data: image } },
         ],
       }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 1200 },
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 1200,
+        responseMimeType: "application/json",
+      },
     }),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "Gemini vision failed");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${errorMessageFromResponse(data, "Gemini vision failed")}`);
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
-  return { ...normalizeCapture(parseJsonText(text) || { summary: text, holdings: [], warnings: ["JSON 형식으로 읽지 못했습니다."] }), provider: "gemini", model };
+  return normalizeCapture(parseJsonText(text));
+}
+
+function configuredProviders(env, body) {
+  const providers = [];
+  const browserKey = String(body.aiApiKey || "").trim();
+  const browserProvider = providerFromKey(body.aiProvider, browserKey);
+
+  if (browserKey && browserProvider === "openai") {
+    providers.push({
+      source: "browser",
+      provider: "openai",
+      model: String(body.aiModel || "").trim() || "gpt-4o-mini",
+      apiKey: browserKey,
+    });
+  }
+
+  if (browserKey && browserProvider === "gemini") {
+    providers.push({
+      source: "browser",
+      provider: "gemini",
+      model: String(body.aiModel || "").trim() || "gemini-2.0-flash",
+      apiKey: browserKey,
+    });
+  }
+
+  if (env.OPENAI_API_KEY) {
+    providers.push({
+      source: "server",
+      provider: "openai",
+      model: env.OPENAI_VISION_MODEL || "gpt-4o-mini",
+      apiKey: env.OPENAI_API_KEY,
+    });
+  }
+
+  if (env.GEMINI_API_KEY) {
+    providers.push({
+      source: "server",
+      provider: "gemini",
+      model: env.GEMINI_MODEL || "gemini-2.0-flash",
+      apiKey: env.GEMINI_API_KEY,
+    });
+  }
+
+  return providers;
+}
+
+async function callProvider(config, image, mimeType) {
+  const input = { apiKey: config.apiKey, model: config.model, image, mimeType };
+  if (config.provider === "openai") return askOpenAIVision(input);
+  if (config.provider === "gemini") return askGeminiVision(input);
+  throw new Error(`지원하지 않는 provider입니다: ${config.provider}`);
 }
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { image = "", mimeType = "image/png", aiProvider = "", aiApiKey = "", aiModel = "" } = await request.json();
+    const body = await request.json();
+    const image = String(body.image || "");
+    const mimeType = String(body.mimeType || "image/png");
     if (!image) return json({ error: "image is required" }, { status: 400 });
-    const warnings = [];
+
+    const providers = configuredProviders(env, body);
+    if (!providers.length) {
+      return json({
+        summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.",
+        holdings: [],
+        warnings: ["브라우저 AI 키 또는 Cloudflare Pages 환경변수 키가 필요합니다."],
+        attempts: [],
+      });
+    }
+
     const attempts = [];
-    const clientProvider = String(aiProvider || "").toLowerCase();
-    const clientKey = String(aiApiKey || "").trim();
-
-    if (clientKey && clientProvider === "openai") {
-      const model = aiModel || "gpt-4o-mini";
-      attempts.push(`browser OpenAI ${model}`);
+    const warnings = [];
+    for (const config of providers) {
+      const label = `${config.source} ${config.provider} ${config.model}`;
+      attempts.push(label);
       try {
-        return json(await askOpenAIVision(env, image, mimeType, { apiKey: clientKey, model }));
+        const result = await callProvider(config, image, mimeType);
+        return json({
+          ...result,
+          provider: config.provider,
+          source: config.source,
+          model: config.model,
+          attempts,
+        });
       } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(providerWarning("OpenAI", model, error.message));
+        // 핵심 수정: quota로 뭉개지 않고 실제 provider/status/error를 그대로 보여준다.
+        warnings.push(`${label}: ${sanitizeError(error.message)}`);
       }
     }
 
-    if (clientKey && clientProvider === "gemini") {
-      const model = aiModel || "gemini-2.0-flash";
-      attempts.push(`browser Gemini ${model}`);
-      try {
-        return json(await askGeminiVision(env, image, mimeType, { apiKey: clientKey, model }));
-      } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(providerWarning("Gemini", model, error.message));
-      }
-    }
-
-    if (env.OPENAI_API_KEY) {
-      const model = env.OPENAI_VISION_MODEL || "gpt-4o-mini";
-      attempts.push(`server OpenAI ${model}`);
-      try {
-        return json(await askOpenAIVision(env, image, mimeType));
-      } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(providerWarning("OpenAI", model, error.message));
-      }
-    }
-    if (env.GEMINI_API_KEY) {
-      const model = env.GEMINI_MODEL || "gemini-2.0-flash";
-      attempts.push(`server Gemini ${model}`);
-      try {
-        return json(await askGeminiVision(env, image, mimeType));
-      } catch (error) {
-        if (!providerProblem(error.message)) throw error;
-        warnings.push(providerWarning("Gemini", model, error.message));
-      }
-    }
-    if (warnings.length) {
-      return json({ summary: "설정된 AI provider가 모두 캡처를 읽지 못했습니다.", holdings: [], warnings, attempts });
-    }
-    return json({ summary: "AI 이미지 분석 키가 없어 캡처를 읽지 못했습니다.", holdings: [], warnings: ["OPENAI_API_KEY 또는 GEMINI_API_KEY를 Cloudflare Pages 환경 변수에 넣어야 합니다."], attempts });
+    return json({
+      summary: "설정된 AI provider가 모두 캡처를 읽지 못했습니다.",
+      holdings: [],
+      warnings,
+      attempts,
+    });
   } catch (error) {
-    return json({ error: error.message }, { status: 500 });
+    return json({ error: sanitizeError(error.message) }, { status: 500 });
   }
 }

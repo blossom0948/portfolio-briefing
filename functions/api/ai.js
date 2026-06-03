@@ -56,6 +56,15 @@ async function askGemini(env, prompt, override = {}) {
   return data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "AI 응답을 읽지 못했습니다.";
 }
 
+function providerFromKey(selectedProvider = "", apiKey = "") {
+  const selected = String(selectedProvider || "").trim().toLowerCase();
+  const key = String(apiKey || "").trim();
+  if (key.startsWith("sk-")) return "openai";
+  if (key.startsWith("AIza")) return "gemini";
+  if (selected === "openai" || selected === "gemini") return selected;
+  return "";
+}
+
 export async function onRequestPost({ request, env }) {
   try {
     const { question = "", aiProvider = "", aiApiKey = "", aiModel = "" } = await request.json();
@@ -76,8 +85,8 @@ export async function onRequestPost({ request, env }) {
       question,
     ].join("\n");
     const warnings = [];
-    const clientProvider = String(aiProvider || "").toLowerCase();
     const clientKey = String(aiApiKey || "").trim();
+    const clientProvider = providerFromKey(aiProvider, clientKey);
 
     if (clientKey && clientProvider === "openai") {
       try {

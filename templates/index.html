@@ -361,12 +361,13 @@
           <div class="ai-key-row">
             <label>Provider
               <select id="aiProvider">
+                <option value="auto">Auto</option>
                 <option value="gemini">Gemini</option>
                 <option value="openai">OpenAI</option>
               </select>
             </label>
             <label>Model
-              <input id="aiModel" placeholder="gemini-2.0-flash">
+              <input id="aiModel" placeholder="비우면 자동">
             </label>
           </div>
           <label>API Key
@@ -374,7 +375,7 @@
           </label>
           <button id="saveAiKeyBtn" type="button">AI 키 저장</button>
           <small id="aiKeyStatus">브라우저 AI 키 상태를 확인하는 중입니다.</small>
-          <small>Cloudflare 환경변수가 꼬여도 여기 저장한 키로 캡처 분석과 AI 질문을 먼저 시도합니다.</small>
+          <small>OpenAI 키는 sk-, Gemini 키는 AIza prefix로 자동 판별합니다.</small>
         </div>
         <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
         <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
@@ -389,7 +390,7 @@
     </aside>
 
     <div id="toast" role="status"></div>
-    <script src="/static/app.js?v=20260603-ai-key-debug"></script>
-    <script src="/static/landing.js?v=20260603-ai-key-debug"></script>
+    <script src="/static/app.js?v=20260603-capture-full-fix"></script>
+    <script src="/static/landing.js?v=20260603-capture-full-fix"></script>
   </body>
 </html>

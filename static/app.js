@@ -69,13 +69,14 @@ function aiSettings() {
   const keyInput = $("#aiApiKey")?.value;
   const modelInput = $("#aiModel")?.value;
   return {
-    provider: providerInput || localStorage.getItem("briefolioAiProvider") || "gemini",
+    provider: providerInput || localStorage.getItem("briefolioAiProvider") || "auto",
     apiKey: keyInput !== undefined ? keyInput : localStorage.getItem("briefolioAiApiKey") || "",
     model: modelInput !== undefined ? modelInput : localStorage.getItem("briefolioAiModel") || "",
   };
 }
 
 function defaultAiModel(provider) {
+  if (provider === "auto") return "";
   return provider === "openai" ? "gpt-4o-mini" : "gemini-2.0-flash";
 }
 
@@ -100,7 +101,7 @@ function loadAiSettingsForm() {
 }
 
 function saveAiSettingsForm() {
-  const provider = $("#aiProvider")?.value || "gemini";
+  const provider = $("#aiProvider")?.value || "auto";
   const apiKey = $("#aiApiKey")?.value.trim() || "";
   const model = $("#aiModel")?.value.trim() || defaultAiModel(provider);
   localStorage.setItem("briefolioAiProvider", provider);
@@ -114,7 +115,7 @@ function renderAiKeyStatus() {
   const status = $("#aiKeyStatus");
   if (!status) return;
   const settings = aiSettings();
-  const model = settings.model.trim() || defaultAiModel(settings.provider);
+  const model = settings.model.trim() || defaultAiModel(settings.provider) || "키 prefix로 자동 선택";
   status.textContent = settings.apiKey.trim()
     ? `현재 요청은 브라우저 ${settings.provider.toUpperCase()} 키로 먼저 시도합니다. 모델: ${model}`
     : "브라우저 AI 키가 없어 서버 환경변수 키로만 시도합니다.";
@@ -206,7 +207,8 @@ function renderCapturePreview(result) {
   const preview = $("#capturePreview");
   const answer = $("#aiDockAnswer");
   const applyButton = $("#applyCaptureBtn");
-  const warnings = (result.warnings || []).map(friendlyWarning);
+  // 핵심 수정: provider의 실제 HTTP/status/error를 한도 문제로 뭉개지 않고 그대로 보여준다.
+  const warnings = (result.warnings || []).map((warning) => String(warning));
   const attempts = Array.isArray(result.attempts) && result.attempts.length
     ? [`시도한 경로: ${result.attempts.join(" → ")}`]
     : [];
@@ -1331,7 +1333,7 @@ $("#aiDockClose")?.addEventListener("click", () => setAiDock(false));
 $("#aiDockAsk")?.addEventListener("click", () => askDockAi());
 $("#saveAiKeyBtn")?.addEventListener("click", saveAiSettingsForm);
 $("#aiProvider")?.addEventListener("change", () => {
-  const provider = $("#aiProvider")?.value || "gemini";
+  const provider = $("#aiProvider")?.value || "auto";
   const model = $("#aiModel");
   if (model) model.value = defaultAiModel(provider);
   renderAiKeyStatus();
