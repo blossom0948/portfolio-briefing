@@ -1105,12 +1105,56 @@ async function loadSecondaryContent() {
   await Promise.allSettled([newsTask, briefingTask]);
 }
 
+function fallbackSnapshot(portfolio, reason = "") {
+  const holdings = Array.isArray(portfolio?.holdings) ? portfolio.holdings : [];
+  const rows = holdings.map((item) => {
+    const currency = item.market === "KR" ? "KRW" : "USD";
+    const close = Number(item.average_price || 0);
+    const quantity = Number(item.quantity || 0);
+    const value = close * quantity;
+    return {
+      ...item,
+      date: "-",
+      close,
+      currency,
+      change: null,
+      change_pct: null,
+      value,
+      cost: value,
+      profit: 0,
+      profit_pct: 0,
+      plan_estimated_shares: 0,
+    };
+  });
+  return {
+    holdings: rows,
+    totals: {
+      KRW: rows.filter((item) => item.currency === "KRW").reduce((sum, item) => sum + Number(item.value || 0), 0),
+      USD: rows.filter((item) => item.currency === "USD").reduce((sum, item) => sum + Number(item.value || 0), 0),
+      KRW_CONVERTED: rows.filter((item) => item.currency === "KRW").reduce((sum, item) => sum + Number(item.value || 0), 0),
+    },
+    active_plans: rows.filter((item) => item.plan?.enabled).length,
+    usd_krw_rate: 0,
+    updated_at: reason ? "가격 조회 실패, 저장된 설정 기준" : "저장된 설정 기준",
+  };
+}
+
 async function loadAll() {
   $("#briefingText").textContent = "불러오는 중...";
-  const [portfolio, snapshot] = await Promise.all([
-    requestJson("/api/portfolio"),
-    requestJson("/api/snapshot"),
-  ]);
+  let portfolio;
+  try {
+    portfolio = await requestJson("/api/portfolio");
+  } catch {
+    portfolio = await requestJson("/api/config");
+  }
+
+  let snapshot;
+  try {
+    snapshot = await requestJson("/api/snapshot");
+  } catch (error) {
+    snapshot = fallbackSnapshot(portfolio, error.message);
+    toast("가격 조회는 실패했지만 저장된 보유 설정을 표시합니다.");
+  }
   state.portfolio = portfolio;
   renderSnapshot(snapshot);
   renderSelectors(portfolio);

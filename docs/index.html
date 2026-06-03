@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Briefolio</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=20260603-data-chat">
   </head>
   <body>
     <section id="landingPage" class="landing-page">
@@ -349,29 +349,43 @@
       <button id="aiDockToggle" class="ai-dock-button" type="button" aria-expanded="false">
         <span>AI</span>
       </button>
-      <section id="aiDockPanel" class="ai-dock-panel liquid-glass-container" hidden>
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">AI Sync</p>
-            <h2>토스 캡처로 맞추기</h2>
+      <section id="aiDockPanel" class="ai-dock-panel ai-chat-panel liquid-glass-container" hidden>
+        <header class="ai-chat-topbar">
+          <button class="ai-chat-icon" type="button" aria-label="메뉴">☰</button>
+          <div class="ai-chat-title">
+            <strong>Briefolio AI</strong>
+            <span>Gemini Flash</span>
           </div>
-          <button id="aiDockClose" type="button">닫기</button>
+          <button id="aiDockClose" class="ai-chat-close" type="button">닫기</button>
+        </header>
+
+        <div class="ai-chat-body">
+          <div class="ai-chat-empty" aria-hidden="true">
+            <div class="ai-spark">✦</div>
+            <h2>우성님, 포트폴리오를 물어보세요</h2>
+          </div>
+          <pre id="aiDockAnswer" class="answer compact-answer"></pre>
+          <div id="capturePreview" class="capture-preview"></div>
         </div>
-        <p class="ai-server-note">AI 키는 Cloudflare 서버 환경변수에서만 사용합니다. 이 브라우저나 휴대폰에 따로 키를 저장하지 않습니다.</p>
-        <textarea id="aiDockQuestion" placeholder="포트폴리오에 대해 물어보세요. 예: 이번 주 모으기 전에 뭐부터 확인할까?"></textarea>
-        <button id="aiDockAsk" class="primary wide" type="button">AI에게 묻기</button>
-        <pre id="aiDockAnswer" class="answer compact-answer">캡처를 올리면 현재 앱 기록과 비교해서 토스 화면 기준으로 맞출 수 있습니다.</pre>
-        <label class="capture-drop">
-          <input id="tossCaptureInput" type="file" accept="image/*">
-          <span>토스증권 캡처 선택</span>
-        </label>
-        <div id="capturePreview" class="capture-preview"></div>
-        <button id="applyCaptureBtn" class="primary wide" type="button" disabled>캡처 기준으로 반영</button>
+
+        <div class="ai-chat-tools">
+          <p class="ai-server-note">AI 키는 Cloudflare 서버 환경변수에서만 사용합니다.</p>
+          <button id="applyCaptureBtn" class="primary" type="button" disabled>캡처 기준으로 반영</button>
+        </div>
+
+        <div class="ai-chat-composer">
+          <label class="capture-drop ai-attach" title="토스증권 캡처 선택">
+            <input id="tossCaptureInput" type="file" accept="image/*">
+            <span>＋</span>
+          </label>
+          <textarea id="aiDockQuestion" placeholder="Briefolio에게 물어보세요"></textarea>
+          <button id="aiDockAsk" class="primary ai-send" type="button">전송</button>
+        </div>
       </section>
     </aside>
 
     <div id="toast" role="status"></div>
-    <script src="./app.js?v=20260603-server-ai-compact"></script>
-    <script src="./landing.js?v=20260603-server-ai-compact"></script>
+    <script src="./app.js?v=20260603-data-chat"></script>
+    <script src="./landing.js?v=20260603-data-chat"></script>
   </body>
 </html>
