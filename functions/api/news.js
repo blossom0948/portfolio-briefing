@@ -170,6 +170,7 @@ const BAD_OVERSEAS_TERMS = [
 function isRelevant(item, terms, market) {
   const haystack = normalizeTerm(`${item.title} ${item.title_ko} ${item.source}`);
   if (!haystack) return false;
+  if (market === "domestic" && ["블로그", "카페", "지식in"].some((term) => haystack.includes(term.toLowerCase()))) return false;
   if (market === "overseas" && BAD_OVERSEAS_TERMS.some((term) => haystack.includes(term))) return false;
   if (!terms.length) return true;
   return terms.some((term) => haystack.includes(term));
