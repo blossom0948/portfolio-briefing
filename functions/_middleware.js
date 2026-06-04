@@ -1,6 +1,7 @@
 import { isAuthenticated, json } from "./_shared.js";
 
 const PUBLIC_PATHS = new Set([
+  "/auth",
   "/auth.html",
   "/api/login",
   "/api/logout",
