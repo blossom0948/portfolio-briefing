@@ -12,6 +12,7 @@
   const stockChange = document.querySelector("#landingStockChange");
   const appShell = document.querySelector("#appShell");
   const landingPage = document.querySelector("#landingPage");
+  const authPage = document.querySelector("#authPage");
   const state = {
     points: [],
     dates: [],
@@ -274,6 +275,7 @@
 
   function showApp(view = "dashboard") {
     appShell.hidden = false;
+    if (authPage) authPage.hidden = true;
     appShell.classList.remove("app-shell-enter");
     void appShell.offsetWidth;
     appShell.classList.add("app-shell-enter");
@@ -292,6 +294,7 @@
   }
 
   function showLanding() {
+    if (authPage) authPage.hidden = true;
     landingPage.hidden = false;
     startDraw();
     landingPage.classList.remove("landing-exit");
@@ -305,8 +308,20 @@
     history.replaceState(null, "", location.pathname);
   }
 
+  function showAuth() {
+    if (!authPage) return;
+    authPage.hidden = false;
+    appShell.hidden = true;
+    landingPage.hidden = true;
+    stopDraw();
+    history.replaceState(null, "", "#auth");
+  }
+
   document.querySelectorAll("[data-open-view]").forEach((button) => {
     button.addEventListener("click", () => showApp(button.dataset.openView || "dashboard"));
+  });
+  document.querySelectorAll("[data-open-auth]").forEach((button) => {
+    button.addEventListener("click", showAuth);
   });
   document.querySelector("#enterDashboardBtn")?.addEventListener("click", () => showApp("dashboard"));
   document.querySelector("#landingBriefBtn")?.addEventListener("click", () => showApp("briefing"));
@@ -321,7 +336,9 @@
   loadPortfolio().then((portfolio) => renderStockButtons(portfolio.holdings)).catch(() => renderStockButtons(fallbackHoldings));
 
   const initialView = location.hash.replace("#", "");
-  if (["dashboard", "manage", "briefing", "settings"].includes(initialView)) {
+  if (initialView === "auth") {
+    showAuth();
+  } else if (["dashboard", "manage", "briefing", "settings"].includes(initialView)) {
     showApp(initialView);
   }
 })();
