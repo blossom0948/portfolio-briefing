@@ -15,6 +15,8 @@ app = Flask(__name__)
 @app.before_request
 def require_pin():
     app_pin = core.os.environ.get("APP_PIN")
+    if request.path == "/api/auth-config":
+        return None
     if not app_pin or not request.path.startswith("/api/"):
         return None
     if request.headers.get("X-App-Pin") == app_pin:
@@ -47,6 +49,19 @@ def index():
 @app.get("/api/portfolio")
 def portfolio():
     return jsonify(core.load_portfolio())
+
+
+@app.get("/api/auth-config")
+def auth_config():
+    url = core.os.environ.get("SUPABASE_URL") or core.os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or ""
+    anon_key = (
+        core.os.environ.get("SUPABASE_ANON_KEY")
+        or core.os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+        or core.os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or core.os.environ.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+        or ""
+    )
+    return jsonify({"enabled": bool(url and anon_key), "url": url, "anonKey": anon_key})
 
 
 @app.put("/api/settings")

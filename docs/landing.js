@@ -13,6 +13,9 @@
   const appShell = document.querySelector("#appShell");
   const landingPage = document.querySelector("#landingPage");
   const authPage = document.querySelector("#authPage");
+  const googleSignInButton = document.querySelector("#googleSignInButton");
+  const authSignOutButton = document.querySelector("#authSignOutButton");
+  const authStatus = document.querySelector("#authStatus");
   const state = {
     points: [],
     dates: [],
@@ -20,9 +23,12 @@
     changePct: null,
     hue: 210,
     startedAt: performance.now(),
+    authSession: null,
   };
   let animationFrame = null;
   let animationActive = false;
+  let supabaseClient = null;
+  let authConfigLoaded = false;
 
   function money(value, currency) {
     const amount = Number(value || 0);
@@ -50,6 +56,118 @@
         return { holdings: fallbackHoldings };
       }
     }
+  }
+
+  function setAuthStatus(message, tone = "") {
+    if (!authStatus) return;
+    authStatus.textContent = message;
+    authStatus.classList.toggle("ok", tone === "ok");
+    authStatus.classList.toggle("error", tone === "error");
+  }
+
+  function authRedirectUrl() {
+    return `${window.location.origin}${window.location.pathname || "/"}`;
+  }
+
+  function updateAuthUi(session = state.authSession) {
+    state.authSession = session || null;
+    const email = session?.user?.email || "";
+    if (googleSignInButton) {
+      googleSignInButton.hidden = Boolean(session);
+      googleSignInButton.disabled = false;
+    }
+    if (authSignOutButton) {
+      authSignOutButton.hidden = !session;
+      authSignOutButton.disabled = false;
+    }
+    if (session) {
+      setAuthStatus(`${email || "Google 계정"}으로 로그인되었습니다.`, "ok");
+    }
+  }
+
+  async function initSupabaseAuth() {
+    if (authConfigLoaded) return supabaseClient;
+    authConfigLoaded = true;
+
+    let config;
+    try {
+      config = await safeJson("/api/auth-config");
+    } catch (error) {
+      setAuthStatus(`Supabase 설정을 불러오지 못했습니다: ${error.message}`, "error");
+      return null;
+    }
+
+    if (!config?.enabled || !config.url || !config.anonKey) {
+      setAuthStatus("Cloudflare Pages 환경변수에 SUPABASE_URL과 SUPABASE_ANON_KEY를 넣어야 합니다.", "error");
+      return null;
+    }
+
+    if (!window.supabase?.createClient) {
+      setAuthStatus("Supabase JS를 불러오지 못했습니다. 네트워크 또는 CDN 차단을 확인하세요.", "error");
+      return null;
+    }
+
+    supabaseClient = window.supabase.createClient(config.url, config.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) {
+      setAuthStatus(`로그인 세션 확인 실패: ${error.message}`, "error");
+      return supabaseClient;
+    }
+    updateAuthUi(data?.session || null);
+    if (!data?.session) {
+      setAuthStatus("Google 버튼을 눌러 로그인할 수 있습니다.");
+    }
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      updateAuthUi(session);
+      if (event === "SIGNED_IN") {
+        showApp("dashboard");
+      }
+    });
+    return supabaseClient;
+  }
+
+  async function signInWithGoogle() {
+    if (!googleSignInButton) return;
+    googleSignInButton.disabled = true;
+    setAuthStatus("Google 로그인으로 이동하는 중입니다.");
+    const client = await initSupabaseAuth();
+    if (!client) {
+      googleSignInButton.disabled = false;
+      return;
+    }
+    const { error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: authRedirectUrl(),
+      },
+    });
+    if (error) {
+      googleSignInButton.disabled = false;
+      setAuthStatus(`Google 로그인 실패: ${error.message}`, "error");
+    }
+  }
+
+  async function signOut() {
+    if (!supabaseClient) await initSupabaseAuth();
+    if (!supabaseClient || !authSignOutButton) return;
+    authSignOutButton.disabled = true;
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      authSignOutButton.disabled = false;
+      setAuthStatus(`로그아웃 실패: ${error.message}`, "error");
+      return;
+    }
+    state.authSession = null;
+    updateAuthUi(null);
+    setAuthStatus("로그아웃되었습니다.");
   }
 
   function fallbackPoints() {
@@ -323,6 +441,8 @@
   document.querySelectorAll("[data-open-auth]").forEach((button) => {
     button.addEventListener("click", showAuth);
   });
+  googleSignInButton?.addEventListener("click", signInWithGoogle);
+  authSignOutButton?.addEventListener("click", signOut);
   document.querySelector("#enterDashboardBtn")?.addEventListener("click", () => showApp("dashboard"));
   document.querySelector("#landingBriefBtn")?.addEventListener("click", () => showApp("briefing"));
   document.querySelectorAll("[data-return-landing]").forEach((button) => {
@@ -334,6 +454,7 @@
   startDraw();
 
   loadPortfolio().then((portfolio) => renderStockButtons(portfolio.holdings)).catch(() => renderStockButtons(fallbackHoldings));
+  initSupabaseAuth();
 
   const initialView = location.hash.replace("#", "");
   if (initialView === "auth") {
