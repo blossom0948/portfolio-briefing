@@ -8,6 +8,42 @@ export function json(data, init = {}) {
   });
 }
 
+export const AUTH_COOKIE_NAME = "briefolio_session";
+
+export function cookieValue(cookieHeader = "", name = AUTH_COOKIE_NAME) {
+  return String(cookieHeader || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1) || "";
+}
+
+export async function sessionToken(env = {}) {
+  const pin = String(env.APP_PIN || "");
+  const secret = String(env.APP_SESSION_SECRET || env.APP_PIN || "");
+  if (!pin) return "";
+  const payload = new TextEncoder().encode(`briefolio:${pin}:${secret}`);
+  const hash = await crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function isAuthenticated(request, env = {}) {
+  if (!env.APP_PIN) return true;
+  const headerPin = request.headers.get("X-App-Pin") || "";
+  if (headerPin && headerPin === env.APP_PIN) return true;
+  const cookieToken = cookieValue(request.headers.get("Cookie") || "");
+  return Boolean(cookieToken && cookieToken === await sessionToken(env));
+}
+
+export async function authCookie(env = {}, maxAge = 60 * 60 * 24 * 30) {
+  const token = await sessionToken(env);
+  return `${AUTH_COOKIE_NAME}=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+export function clearAuthCookie() {
+  return `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+}
+
 export function defaultPortfolio() {
   return {
     settings: { recipient: "blossom0948@gmail.com", send_time: "07:00", timezone: "Asia/Seoul" },

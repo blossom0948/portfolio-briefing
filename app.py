@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from uuid import uuid4
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, make_response, render_template, request
 
 import portfolio_core as core
 
@@ -12,14 +13,25 @@ import portfolio_core as core
 app = Flask(__name__)
 
 
+def session_token() -> str:
+    app_pin = core.os.environ.get("APP_PIN", "")
+    secret = core.os.environ.get("APP_SESSION_SECRET") or app_pin
+    if not app_pin:
+        return ""
+    return hashlib.sha256(f"briefolio:{app_pin}:{secret}".encode("utf-8")).hexdigest()
+
+
 @app.before_request
 def require_pin():
     app_pin = core.os.environ.get("APP_PIN")
-    if request.path == "/api/auth-config":
+    public_paths = {"/api/login", "/api/logout", "/auth.html"}
+    if request.path in public_paths:
         return None
     if not app_pin or not request.path.startswith("/api/"):
         return None
     if request.headers.get("X-App-Pin") == app_pin:
+        return None
+    if request.cookies.get("briefolio_session") == session_token():
         return None
     return jsonify({"error": "PIN required"}), 401
 
@@ -46,22 +58,34 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/auth.html")
+def auth_page():
+    return render_template("auth.html")
+
+
 @app.get("/api/portfolio")
 def portfolio():
     return jsonify(core.load_portfolio())
 
 
-@app.get("/api/auth-config")
-def auth_config():
-    url = core.os.environ.get("SUPABASE_URL") or core.os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or ""
-    anon_key = (
-        core.os.environ.get("SUPABASE_ANON_KEY")
-        or core.os.environ.get("SUPABASE_PUBLISHABLE_KEY")
-        or core.os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-        or core.os.environ.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
-        or ""
-    )
-    return jsonify({"enabled": bool(url and anon_key), "url": url, "anonKey": anon_key})
+@app.post("/api/login")
+def login():
+    app_pin = core.os.environ.get("APP_PIN")
+    if not app_pin:
+        return jsonify({"ok": True, "disabled": True})
+    pin = (request.json or {}).get("pin", "")
+    if pin != app_pin:
+        return jsonify({"error": "PIN이 맞지 않습니다."}), 401
+    response = make_response(jsonify({"ok": True}))
+    response.set_cookie("briefolio_session", session_token(), max_age=60 * 60 * 24 * 30, httponly=True, samesite="Lax")
+    return response
+
+
+@app.post("/api/logout")
+def logout():
+    response = make_response(jsonify({"ok": True}))
+    response.delete_cookie("briefolio_session")
+    return response
 
 
 @app.put("/api/settings")
