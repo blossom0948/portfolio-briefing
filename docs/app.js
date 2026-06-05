@@ -193,8 +193,7 @@ function focusLatestAssistantMessage() {
     const messages = body.querySelectorAll(".ai-message.assistant");
     const last = messages[messages.length - 1];
     if (!last) return;
-    // 답변이 길어도 마지막 줄이 아니라 답변 첫 줄부터 보이게 맞춘다.
-    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 12);
+    body.scrollTop = Math.max(0, last.offsetTop - body.offsetTop - 14);
   });
 }
 
@@ -225,13 +224,14 @@ function addAiMessage(role, text, options = {}) {
 
 function updateLastAssistantMessage(text) {
   const last = state.aiMessages[state.aiMessages.length - 1];
+  const isNewAssistant = !(last && last.role === "assistant");
   if (last && last.role === "assistant") {
     last.text = text;
   } else {
     state.aiMessages.push({ role: "assistant", text });
   }
-  renderAiChat();
-  focusLatestAssistantMessage();
+  renderAiChat({ keepScroll: !isNewAssistant });
+  if (isNewAssistant) focusLatestAssistantMessage();
 }
 
 function toggleAiTools() {
